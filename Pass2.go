@@ -1918,15 +1918,18 @@ func convert_rule_objects (rules []*jRule, ip_net2obj Name2IP_Net) []*Expanded_R
 	if rules == nil { return nil }
 	var expanded []*Expanded_Rule
 	for _, rule := range rules {
-		src_list := ip_net_list(rule.src, ip_net2obj)
-		dst_list := ip_net_list(rule.dst, ip_net2obj)
-		// prt_list := prt_list(rule.prt, prt2obj)
-		// src_range := prt(rule.src_range, prt2obj)
+		src_list := ip_net_list(rule.Src, ip_net2obj)
+		dst_list := ip_net_list(rule.Dst, ip_net2obj)
+		// prt_list := prt_list(rule.Prt, prt2obj)
+		// src_range := prt(rule.Src_range, prt2obj)
 		for _, src := range src_list {
 			for _, dst := range dst_list {
 				expanded =
 					append(
-					expanded, &Expanded_Rule{ deny: rule.deny, src: src, dst: dst, })
+					expanded, &Expanded_Rule{
+						deny: rule.Deny == 1,
+						src: src,
+						dst: dst, })
 			}
 		}
 	}
@@ -1960,23 +1963,28 @@ func ip_net_list (names []string, ip_net2obj Name2IP_Net) ([]*IP_Net) {
 //go:generate easyjson Pass2.go
 //easyjson:json
 type jRouter_Data struct {
-	model string
-	acls []jACL_Info
-	filter_only []string
-	do_objectgroup bool
+	Model string			`json:"model"`
+	Acls []jACL_Info		`json:"acls"`
+	Filter_only []string	`json:"filter_only"`
+	Do_objectgroup int	`json:"do_objectgroup"`
 }
 type jACL_Info struct {
-	name string
-	is_std_acl bool
-	intf_rules, rules []*jRule
-	opt_networks, no_opt_addrs, need_protect []string
-	is_crypto_acl bool
-	add_permit bool
+	Name string				`json:"name"`
+	Is_std_acl int			`json:"is_std_acl"`
+	Intf_rules []*jRule	`json:"intf_rules"`
+	Rules []*jRule			`json:"rules"`
+	Opt_networks []string	`json:"opt_networks"`
+	No_opt_addrs []string	`json:"no_opt_addrs"`
+	Need_protect []string	`json:"need_protect"`
+	Is_crypto_acl int		`json:"is_crypto_acl"`
+	Add_permit int			`json:"add_permit"`
 }
 type jRule struct {
-	deny bool
-	src, dst, prt []string
-	src_range string
+	Deny int			`json:"deny"`
+	Src []string	`json:"src"`
+	Dst []string	`json:"dst"`
+	Prt []string	`json:"prt"`
+	Src_range string	`json:"src_range"`
 }
 
 func prepare_acls (path string) Router_Data {
@@ -1985,9 +1993,9 @@ func prepare_acls (path string) Router_Data {
 	if err != nil { panic(err) }
 	err = easyjson.Unmarshal(data, &jdata)
 	if err != nil { panic(err) }
-	model := jdata.model
-	do_objectgroup := jdata.do_objectgroup
-	raw_acls := jdata.acls
+	model := jdata.Model
+	do_objectgroup := jdata.Do_objectgroup == 1
+	raw_acls := jdata.Acls
 	acls := make([]*ACL_Info, len(raw_acls))
 	for i, raw_info := range raw_acls {
 		
@@ -1996,28 +2004,28 @@ func prepare_acls (path string) Router_Data {
 		ip_net2obj := make(Name2IP_Net)
 		// my $prt2obj    = $acl_info->{prt2obj}    = {};
 
-		intf_rules := convert_rule_objects(raw_info.intf_rules, ip_net2obj)
-		rules := convert_rule_objects(raw_info.rules, ip_net2obj)
+		intf_rules := convert_rule_objects(raw_info.Intf_rules, ip_net2obj)
+		rules := convert_rule_objects(raw_info.Rules, ip_net2obj)
 
-		filter_only := ip_net_list(jdata.filter_only, ip_net2obj)
+		filter_only := ip_net_list(jdata.Filter_only, ip_net2obj)
 		
-		opt_networks := ip_net_list(raw_info.opt_networks, ip_net2obj)
+		opt_networks := ip_net_list(raw_info.Opt_networks, ip_net2obj)
 		for _, obj := range opt_networks {
 			obj.opt_networks = true
 		}
-		no_opt_addrs := ip_net_list(raw_info.no_opt_addrs, ip_net2obj)
+		no_opt_addrs := ip_net_list(raw_info.No_opt_addrs, ip_net2obj)
 		for _, obj := range no_opt_addrs {
 			obj.no_opt_addrs = true
 		}
-		need_protect := ip_net_list(raw_info.need_protect, ip_net2obj)
+		need_protect := ip_net_list(raw_info.Need_protect, ip_net2obj)
 		for _, obj := range need_protect {
 			obj.need_protect = true
 		}
 		setup_ip_net_relation(ip_net2obj)
 
 		acl_info := ACL_Info{
-			raw_info.name,
-			raw_info.is_std_acl,
+			raw_info.Name,
+			raw_info.Is_std_acl == 1,
 			intf_rules, rules,
 			ip_net2obj,
 			filter_only, opt_networks, no_opt_addrs,
@@ -2046,9 +2054,9 @@ func prepare_acls (path string) Router_Data {
 //			rules = move_rules_esp_ah(rules, prt2obj)
 
 			has_final_permit := true //check_final_permit(rules);
-			add_permit       := raw_info.add_permit
+			add_permit       := raw_info.Add_permit == 1
 //			add_protect_rules(acl_info, has_final_permit || add_permit)
-			if do_objectgroup && !raw_info.is_crypto_acl {
+			if do_objectgroup && raw_info.Is_crypto_acl != 1 {
 //				find_objectgroups(acl_info, router_data);
 			}
 			if filter_only != nil && !add_permit {
