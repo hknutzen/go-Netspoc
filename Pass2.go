@@ -2302,7 +2302,7 @@ func print_combined (config []string, router_data Router_Data, out_path string) 
 			print_acl(acl_info, router_data);
 		} else {
 			// Print unchanged config line.
-			fmt.Print(line)
+			fmt.Println(line)
 		}
     }   
 
