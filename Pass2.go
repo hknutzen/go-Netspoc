@@ -2289,7 +2289,7 @@ func print_combined (config []string, router_data Router_Data, out_path string) 
 	}
 
 	// Print config and insert printed ACLs at "#insert <name>" markers.
-	re := regexp.MustCompile("^#insert (.*)\n$")
+	re := regexp.MustCompile("^#insert (.*)$")
 	for _, line := range config {
 
 		indexes := re.FindStringSubmatchIndex(line)
