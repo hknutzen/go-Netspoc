@@ -50,17 +50,25 @@ var (
 	config = Config{concurrent: 2, pipe: false}
 )
 
+func to_sterr(format string, args ...interface{}) {
+	fmt.Fprintf(os.Stderr, format, args...)
+	fmt.Fprintln(os.Stderr)
+}
+
 func fatal_err (format string, args ...interface{}) {
-	panic(fmt.Sprintf(format, args...))
+	string := "Error: " + fmt.Sprintf(format, args...)
+	fmt.Fprintln(os.Stderr, string)
+	os.Exit(1)
 }
 
 func info (format string, args ...interface{}) {
-	fmt.Fprintf(os.Stderr, format, args...)
+	string := fmt.Sprintf(format, args...)
+	fmt.Fprintln(os.Stderr, string)
 }
 
 func diag_msg (msg string) {
 	if show_diag {
-		fmt.Fprintln(os.Stderr, msg)
+		fmt.Fprintln(os.Stderr, "DIAG: " + msg)
 	}
 }
 
@@ -1973,9 +1981,9 @@ type jRule struct {
 
 func prepare_acls (path string) Router_Data {
 	var jdata jRouter_Data
-	fd, err := ioutil.ReadFile(path)
+	data, err := ioutil.ReadFile(path)
 	if err != nil { panic(err) }
-	err = easyjson.Unmarshal(fd, &jdata)
+	err = easyjson.Unmarshal(data, &jdata)
 	if err != nil { panic(err) }
 	model := jdata.model
 	do_objectgroup := jdata.do_objectgroup
