@@ -154,7 +154,7 @@ func setup_ip_net_relation (ip_net2obj Name2IP_Net) {
 		ip, mask := network.net.IP, network.net.Mask
 		ip_map, ok := mask_ip_hash[string(mask)]
 		if !ok {
-			ip_map := make(map[string]*IP_Net)
+			ip_map = make(map[string]*IP_Net)
 			mask_ip_hash[string(mask)] = ip_map
 		}
 		ip_map[string(ip)] = network
