@@ -2366,16 +2366,16 @@ func read_file_lines (filename string) []string {
 }
 
 func pass2_file (device_name, dir string, c chan bool) {
-	success := false
+//	success := false
 
 	// Send ok on success
-	defer func () { c <- success }()
+//	defer func () { c <- success }()
 
 	file := dir + "/" + device_name
 	router_data := prepare_acls(file + ".rules")
 	config := read_file_lines(file + ".config")
 	print_combined(config, router_data, file)
-	success = true
+//	success = true
 }
 
 func apply_concurrent (device_names_fh *os.File, dir, prev string) {
@@ -2402,8 +2402,11 @@ func apply_concurrent (device_names_fh *os.File, dir, prev string) {
 			reused++
 		} else if (0 < workers_left) {
 			// Start concurrent jobs at beginning.
+			/*
 			go pass2_file(device_name, dir, c)
 			workers_left--
+         */
+			pass2_file(device_name, dir, c)
 		} else {
 			// Start next job, after some job has finished.
 			wait_and_check()
@@ -2412,9 +2415,11 @@ func apply_concurrent (device_names_fh *os.File, dir, prev string) {
 	}
 	
 	// Wait for all jobs to be finished.
+	/*
 	for 0 < len(c) {
 		wait_and_check()
 	}
+   */
 
 	if err := scanner.Err(); err != nil {
 		fatal_err("While reading device names: %v", err)
