@@ -1948,7 +1948,7 @@ func ip_net_list (names []string, ip_net2obj Name2IP_Net) ([]*IP_Net) {
 	if names == nil {
 		return nil
 	}
-	result := make([]*IP_Net, 0, len(names))
+	result := make([]*IP_Net, len(names))
 	for i, name := range names {
 		obj, ok := ip_net2obj[name];
 		if !ok {
@@ -1980,10 +1980,10 @@ type jACL_Info struct {
 	Add_permit int			`json:"add_permit"`
 }
 type jRule struct {
-	Deny int			`json:"deny"`
-	Src []string	`json:"src"`
-	Dst []string	`json:"dst"`
-	Prt []string	`json:"prt"`
+	Deny int				`json:"deny"`
+	Src []string		`json:"src"`
+	Dst []string		`json:"dst"`
+	Prt []string		`json:"prt"`
 	Src_range string	`json:"src_range"`
 }
 
