@@ -86,8 +86,10 @@ type Proto struct {
 	type_, code int
 	name string
 	up *Proto
+	has_neighbor bool
 }
 type Name2IP_Net map[string]*IP_Net
+type Name2Proto map[string]*Proto
 
 func create_ip_obj (ip_net string) (*IP_Net) {
 	_, net, _ := net.ParseCIDR(ip_net)
@@ -104,23 +106,23 @@ func get_ip_obj (ip net.IP, mask net.IPMask, ip_net2obj Name2IP_Net) (*IP_Net) {
 	return obj
 }
 
-func create_prt_obj (descr string) (Proto) {
+func create_prt_obj (descr string) (*Proto) {
 	splice := strings.Split(descr, " ")
-	proto, n1, n2, established := splice[0], splice[1], splice[2], splice[3]
+	proto := splice[0]
 	prt := Proto{ proto: proto, name: descr }
     
 	if proto == "tcp" || proto == "udp" {
-		p1, _ := strconv.Atoi(n1)
-		p2, _ := strconv.Atoi(n2)
+		p1, _ := strconv.Atoi(splice[1])
+		p2, _ := strconv.Atoi(splice[2])
 		prt.ports = [...]int{ p1, p2 }
-		if established != "" {
+		if len(splice) > 3 {
 			 prt.established = true
 		}
 	} else if proto == "icmp" {
-		if n1 != "" {
-			prt.type_, _ = strconv.Atoi(n1)
-			if n2 != "" {
-				prt.code, _ = strconv.Atoi(n2)
+		if len(splice) > 1 {
+			prt.type_, _ = strconv.Atoi(splice[1])
+			if len(splice) > 2 {
+				prt.code, _ = strconv.Atoi(splice[2])
 			} else {
 				prt.code = -1
 			}
@@ -128,7 +130,7 @@ func create_prt_obj (descr string) (Proto) {
 			prt.type_ = -1
 		}
 	}
-	return prt
+	return &prt
 }
 
 type ByMask []net.IPMask
@@ -223,131 +225,145 @@ sub add_tcp_udp_icmp {
     $prt2obj->{'udp 1 65535'} ||= create_prt_obj('udp 1 65535');
     $prt2obj->{icmp} ||= create_prt_obj('icmp');
 }
+*/
 
-# Set {up} relation from port range to the smallest port range which
-# includes it.
-# If no including range is found, link it with next larger protocol.
-# Set attribute {has_neighbor} to range adjacent to upper port.
-# Abort on overlapping ranges.
-sub order_ranges {
-    my ($proto, $prt2obj, $up) = @_;
-    my @sorted =
+// Set {up} relation from port range to the smallest port range which
+// includes it.
+// If no including range is found, link it with next larger protocol.
+// Set attribute {has_neighbor} to range adjacent to upper port.
+// Abort on overlapping ranges.
+func order_ranges (proto string, prt2obj Name2Proto, up *Proto) {
+	var ranges []*Proto
+	for _, v := range prt2obj {
+		if v.proto == proto && !v.established {
+			ranges = append(ranges, v)
+		}
+	}
 
-      # Sort by low port. If low ports are equal, sort reverse by high port.
-      # I.e. larger ranges coming first, if there are multiple ranges
-      # with identical low port.
-      sort {
-             $a->{range}->[0] <=> $b->{range}->[0]
-          || $b->{range}->[1] <=> $a->{range}->[1]
-      } 
-      grep { $_->{proto} eq $proto and not $_->{established} } 
-      values %$prt2obj;
+	// Sort by low port. If low ports are equal, sort reverse by high port.
+	// I.e. larger ranges coming first, if there are multiple ranges
+	// with identical low port.
+	sort.SliceStable(ranges, func(i, j int) bool {
+		return ranges[i].ports[0] < ranges[j].ports[0] ||
+			ranges[i].ports[0] == ranges[j].ports[0] &&
+			ranges[i].ports[1] > ranges[j].ports[1]
+	})
+	
+	// Check current range [a1, a2] for sub-ranges, starting at position $i.
+   // Set attributes {up} and {has_neighbor}.
+   // Return position of range which isn't sub-range or undef
+   // if end of array is reached.
+	var check_subrange func(a *Proto, a1, a2, i int) int
+	check_subrange = func(a *Proto, a1, a2, i int) int {
+		for {
+			if i == len(ranges) { return 0 }
+			b := ranges[i]
+			ports := b.ports
+			b1, b2 := ports[0], ports[1]
 
-    # Check current range [a1, a2] for sub-ranges, starting at position $i.
-    # Set attributes {up} and {has_neighbor}.
-    # Return position of range which isn't sub-range or undef
-    # if end of array is reached.
-    my $check_subrange;
+			// Neighbors
+			// aaaabbbb
+			if a2 + 1 == b1 {
 
-    $check_subrange = sub {
-        my ($a, $a1, $a2, $i) = @_;
-        while (1) {
-            return if $i == @sorted;
-            my $b = $sorted[$i];
-            my ($b1, $b2) = @{ $b->{range} };
+				// Mark protocol as candidate for joining of port ranges during
+				// optimization.
+				a.has_neighbor = true
+				b.has_neighbor = true
 
-            # Neighbors
-            # aaaabbbb
-            if ($a2 + 1 == $b1) {
+				// Mark other ranges having identical start port.
+				j := i + 1
+				for j < len(ranges) {
+					c := ranges[j]
+					c1 := c.ports[0]
+					if a2 + 1 != c1 { break }
+					c.has_neighbor = true;
+					j++
+				}                    
+			}
 
-                # Mark protocol as candidate for joining of port ranges during
-                # optimization.
-                $a->{has_neighbor} = $b->{has_neighbor} = 1;
+			// Not related.
+			// aaaa    bbbbb
+			if a2 < b1 { return i }
 
-                # Mark other ranges having identical start port.
-                my $j = $i + 1;
-                while ($j < @sorted) {
-                    my $c = $sorted[$j];
-                    my $c1 = $c->{range}->[0];
-                    $a2 + 1 == $c1 or last;
-                    $c->{has_neighbor} = 1;
-                    $j++;
-                }                    
-            }
+			// a includes b.
+			// aaaaaaa
+			//  bbbbb
+			if a2 >= b2 {
+				b.up = a
+				i = check_subrange(b, b1, b2, i + 1)
 
-            # Not related.
-            # aaaa    bbbbb
-            return $i if $a2 < $b1;
+				// Stop at end of array.
+				if i != 0 { return 0 }
+				continue
+			}
 
-            # $a includes $b.
-            # aaaaaaa
-            #  bbbbb
-            if ($a2 >= $b2) {
-                $b->{up} = $a;
-                $i = $check_subrange->($b, $b1, $b2, $i + 1);
-
-                # Stop at end of array.
-                $i or return;
-                next;
-            }
-
-            # $a and $b are overlapping.
-            # aaaaa
-            #   bbbbbb
-            # uncoverable statement
-            fatal_err("Unexpected overlapping ranges [$a1-$a2] [$b1-$b2]");
+			// a and b are overlapping.
+			// aaaaa
+			//   bbbbbb
+			// uncoverable statement
+			fatal_err(
+				"Unexpected overlapping ranges [%d-%d] [%d-%d]",
+				a1, a2, b1, b2)
         }
-    };
+    }
 
-    @sorted or return;
-    my $index = 0;
-    while (1) {
-        my $a = $sorted[$index];
-        $a->{up} = $up;
-        my ($a1, $a2) = @{ $a->{range} };
-        $index++;
-        $index = $check_subrange->($a, $a1, $a2, $index) or last;
+	if len(ranges) == 0 { return }
+	index := 0
+	for {
+		a := ranges[index]
+		a.up = up
+		ports := a.ports
+		a1, a2 := ports[0], ports[1]
+		index++
+		index = check_subrange(a, a1, a2, index)
+		if index == 0 { break }
     }
     return;
 }
 
-sub setup_prt_relation {
-    my ($prt2obj) = @_;
-    my $prt_ip = $prt2obj->{ip} ||= create_prt_obj('ip');
-    my $icmp_up = $prt2obj->{icmp} || $prt_ip;
-    for my $prt (values %$prt2obj) {
-        my $proto = $prt->{proto};
-        if ($proto eq 'icmp') {
-            my ($type, $code) = @{$prt}{qw(type code)};
-            if (defined $type) {
-                if (defined $prt->{code}) {
-                    $prt->{up} = $prt2obj->{"icmp $type"} || $icmp_up;
-                }
-                else {
-                    $prt->{up} = $icmp_up;
-                }
-            }
-            else {
-                $prt->{up} = $prt_ip;
-            }
-        }
-            
-        # Numeric protocol.
-        elsif ($proto =~ /^\d+$/) {
-            $prt->{up} = $prt_ip;
-        }
-    }
+func setup_prt_relation (prt2obj Name2Proto) {
+	prt_ip := prt("ip", prt2obj)
+	icmp_up, ok := prt2obj["icmp"]
+	if !ok {
+		icmp_up = prt_ip
+	}
+	
+	for _, prt := range prt2obj {
+		proto := prt.proto
+		if proto == "icmp" {
+			if prt.type_ != -1 {
+				if prt.code != -1 {
+					up, ok := prt2obj[fmt.Sprint("icmp ", prt.type_)]
+					if !ok {
+						up = icmp_up
+					}
+					prt.up = up
+				} else {
+					prt.up = icmp_up
+				}
+			} else {
+				prt.up = prt_ip
+			}
+		} else if _, err := strconv.Atoi(proto); err == nil {
 
-    order_ranges('tcp', $prt2obj, $prt_ip);
-    order_ranges('udp', $prt2obj, $prt_ip);
+			// Numeric protocol.
+			prt.up = prt_ip
+		}
+	}
+	
+	order_ranges("tcp", prt2obj, prt_ip);
+	order_ranges("udp", prt2obj, prt_ip);
 
-    if (my $tcp_establ = $prt2obj->{'tcp 1 65535 established'}) {
-        $tcp_establ->{up} = $prt2obj->{'tcp 1 65535'} || $prt_ip;
-    }
-
-    return;
+	if tcp_establ, ok := prt2obj["tcp 1 65535 established"]; ok {
+		up, ok := prt2obj["tcp 1 65535"]
+		if !ok {
+			up = prt_ip
+		}
+		tcp_establ.up = up
+	}
 }
 
+/*
 #sub print_rule {
 #    my ($rule) = @_;
 #    my ($deny, $src, $dst, $prt) = @{$rule}{qw(deny src dst prt)};
@@ -910,97 +926,107 @@ sub find_objectgroups {
     $acl_info->{rules} = $rules;
     return;
 }
+*/
 
-sub add_protect_rules {
-    my ($acl_info, $router_data, $has_final_permit) = @_;
-    my $need_protect = $acl_info->{need_protect} or return;
-    my ($network_00, $prt_ip) = @{$acl_info}{qw(network_00 prt_ip)};
+func add_protect_rules (acl_info *ACL_Info, has_final_permit bool) {
+	need_protect := acl_info.need_protect
+	if len(need_protect) == 0 { return }
+	network_00, prt_ip := acl_info.network_00, acl_info.prt_ip
 
-    # Add deny rules to protect own interfaces.
-    # If a rule permits traffic to a directly connected network behind
-    # the device, this would accidently permit traffic to an interface
-    # of this device as well.
+	// Add deny rules to protect own interfaces.
+	// If a rule permits traffic to a directly connected network behind
+	// the device, this would accidently permit traffic to an interface
+	// of this device as well.
 
-    # To be added deny rule is needless if there is a rule which
-    # permits any traffic to the interface.
-    # This permit rule can be deleted if there is a permit any any rule.
-    my %no_protect;
-    my $changed;
-    for my $rule (@{ $acl_info->{intf_rules} }) {
-        next if $rule->{deny};
-        next if $rule->{src} ne $network_00;
-        next if $rule->{prt} ne $prt_ip;
-        my $dst = $rule->{dst};
-        $no_protect{$dst} = 1 if $dst->{need_protect};
+	// To be added deny rule is needless if there is a rule which
+	// permits any traffic to the interface.
+	// This permit rule can be deleted if there is a permit any any rule.
+	no_protect := make(map[*IP_Net]bool)
+	var deleted int
+	rules := acl_info.intf_rules
+	for i, rule := range rules {
+		if rule.deny { continue }
+		if rule.src != network_00 { continue }
+		if rule.prt != prt_ip { continue }
+		dst := rule.dst
+		if dst.need_protect {
+			no_protect[dst] = true
+		}
 
-        if ($has_final_permit) {
-            $rule    = undef;
-            $changed = 1;
-        }
-    }
-    if ($changed) {
-        $acl_info->{intf_rules} = [ grep { $_ } @{ $acl_info->{intf_rules} } ];
-    }
+		if has_final_permit {
+			rules[i] = nil;
+			deleted++
+		}
+	}
+	if deleted != 0 {
+		new_rules := make([]*Expanded_Rule, len(rules) - deleted)
+		for _, rule := range rules {
+			if rule != nil {
+				new_rules = append(new_rules, rule)
+			}
+		}
+		acl_info.intf_rules = new_rules
+	}
 
-    # Deny rule is needless if there is no such permit rule.
-    # Try to optimize this case.
-    my %need_protect;
-    for my $rule (@{ $acl_info->{rules} }) {
-        next if $rule->{deny};
-        next if $rule->{prt}->{established};
-        my $dst = $rule->{dst};
-        my $hash = $dst->{is_supernet_of_need_protect} or next;
-        for my $intf (@$need_protect) {
-            if ($hash->{$intf}) {
-                $need_protect{$intf} = $intf;
-            }
-        }
-    }
+	// Deny rule is needless if there is no such permit rule.
+	// Try to optimize this case.
+	protect_map := make(map[*IP_Net]bool)
+	rules = acl_info.rules
+	for _, rule := range rules {
+		if rule.deny { continue }
+		if rule.prt.established { continue }
+		dst := rule.dst
+		hash := dst.is_supernet_of_need_protect
+		if hash == nil { continue }
+		for _, intf := range need_protect {
+			if hash[intf] {
+				protect_map[intf] = true
+			}
+		}
+	}
 
-    # Protect own interfaces.
-    for my $interface (@$need_protect) {
-        if (    $no_protect{$interface}
-            or  not $need_protect{$interface}
-            and not $has_final_permit)
-        {
-            next;
-        }
-
-        push @{ $acl_info->{intf_rules} }, {
-            deny => 1,
-            src  => $network_00,
-            dst  => $interface,
-            prt  => $prt_ip
-        };
-    }
+	// Protect own interfaces.
+	for _, intf := range need_protect {
+		if no_protect[intf] || !protect_map[intf] && !has_final_permit {
+			continue
+		}
+		acl_info.intf_rules = append(acl_info.intf_rules,
+			&Expanded_Rule{
+				deny: true,
+				src: network_00,
+				dst: intf,
+				prt: prt_ip,
+			})
+	}
 }
 
-# Check if last is rule is 'permit ip any any'.
-sub check_final_permit {
-    my ($acl_info, $router_data) = @_;
-    my $rules = $acl_info->{rules};
-    $rules and @$rules or return;
-    my ($net_00, $prt_ip) = @{$acl_info}{qw(network_00 prt_ip)};
-    my ($deny, $src, $dst, $prt) = @{ $rules->[-1] }{qw(deny src dst prt)};
-    return !$deny && $src eq $net_00 && $dst eq $net_00 && $prt eq $prt_ip;
+
+// Check if last rule is 'permit ip any any'.
+func check_final_permit (acl_info *ACL_Info) bool {
+	rules := acl_info.rules
+	l := len(rules)
+	if l == 0 { return false }
+	last := rules[l-1]
+	return !last.deny &&
+		last.src == acl_info.network_00 &&
+		last.dst == acl_info.network_00 &&
+		last.prt == acl_info.prt_ip
 }
 
-# Add 'deny|permit ip any any' at end of ACL.
-sub add_final_permit_deny_rule {
-    my ($acl_info, $router_data) = @_;
-    my $rules = $acl_info->{rules};
-    $acl_info->{add_deny} or $acl_info->{add_permit} or return;
-
-    my ($net_00, $prt_ip) = @{$acl_info}{qw(network_00 prt_ip)};
-    my $rule = { src => $net_00, dst => $net_00, prt => $prt_ip };
-    if ($acl_info->{add_deny}) {
-        $rule->{deny} = 1;
-    }
-    push @{ $acl_info->{rules} }, $rule;
-
-    return;
+// Add 'deny|permit ip any any' at end of ACL.
+func add_final_permit_deny_rule (acl_info *ACL_Info, add_deny, add_permit bool) {
+	if add_deny || add_permit { 
+		rule := Expanded_Rule{
+			deny: add_deny,
+			src: acl_info.network_00,
+			dst: acl_info.network_00,
+			prt: acl_info.prt_ip,
+		}
+		acl_info.rules = append(acl_info.rules, &rule)
+	}
 }
 
+/*
 # Returns iptables code for filtering a protocol.
 sub iptables_prt_code {
     my ($src_range, $prt) = @_;
@@ -1907,29 +1933,38 @@ type Expanded_Rule struct {
 type ACL_Info struct {
 	name string
 	is_std_acl bool
-//	prt2obj
 	intf_rules, rules []*Expanded_Rule
+	prt2obj Name2Proto
 	ip_net2obj Name2IP_Net
-	filter_only, opt_networks, no_opt_addrs []*IP_Net
+	filter_only, opt_networks, no_opt_addrs, need_protect []*IP_Net
 	network_00 *IP_Net
+	prt_ip *Proto
 }
 
-func convert_rule_objects (rules []*jRule, ip_net2obj Name2IP_Net) []*Expanded_Rule {
+func convert_rule_objects (rules []*jRule, ip_net2obj Name2IP_Net, prt2obj Name2Proto) []*Expanded_Rule {
 	if rules == nil { return nil }
 	var expanded []*Expanded_Rule
 	for _, rule := range rules {
 		src_list := ip_net_list(rule.Src, ip_net2obj)
 		dst_list := ip_net_list(rule.Dst, ip_net2obj)
-		// prt_list := prt_list(rule.Prt, prt2obj)
-		// src_range := prt(rule.Src_range, prt2obj)
+		prt_list := prt_list(rule.Prt, prt2obj)
+		var src_range *Proto
+		if rule.Src_range != "" {
+			src_range = prt(rule.Src_range, prt2obj)
+		}
 		for _, src := range src_list {
 			for _, dst := range dst_list {
-				expanded =
-					append(
-					expanded, &Expanded_Rule{
-						deny: rule.Deny == 1,
-						src: src,
-						dst: dst, })
+				for _, prt := range prt_list {
+					expanded =
+						append(
+						expanded, &Expanded_Rule{
+							deny: rule.Deny == 1,
+							src: src,
+							dst: dst, 
+							src_range : src_range,
+							prt: prt,
+						})
+				}
 			}
 		}
 	}
@@ -1960,6 +1995,31 @@ func ip_net_list (names []string, ip_net2obj Name2IP_Net) ([]*IP_Net) {
 	return result
 }
 
+func prt_list (names []string, prt2obj Name2Proto) ([]*Proto) {
+	if names == nil {
+		return nil
+	}
+	result := make([]*Proto, len(names))
+	for i, name := range names {
+		obj, ok := prt2obj[name];
+		if !ok {
+			obj = create_prt_obj(name)
+			prt2obj[name] = obj
+		}
+		result[i] = obj
+	}
+	return result
+}
+
+func prt (name string, prt2obj Name2Proto) (*Proto) {
+	obj, ok := prt2obj[name]
+	if !ok {
+		obj = create_prt_obj(name)
+		prt2obj[name] = obj
+	}
+	return obj
+}
+
 //go:generate easyjson Pass2.go
 //easyjson:json
 type jRouter_Data struct {
@@ -1978,6 +2038,7 @@ type jACL_Info struct {
 	Need_protect []string	`json:"need_protect"`
 	Is_crypto_acl int		`json:"is_crypto_acl"`
 	Add_permit int			`json:"add_permit"`
+	Add_deny int			`json:"add_deny"`
 }
 type jRule struct {
 	Deny int				`json:"deny"`
@@ -2002,10 +2063,11 @@ func prepare_acls (path string) Router_Data {
 		// Process networks and protocols of each interface individually,
 		// because relation between networks may be changed by NAT.
 		ip_net2obj := make(Name2IP_Net)
-		// my $prt2obj    = $acl_info->{prt2obj}    = {};
+		prt2obj    := make(Name2Proto)
 
-		intf_rules := convert_rule_objects(raw_info.Intf_rules, ip_net2obj)
-		rules := convert_rule_objects(raw_info.Rules, ip_net2obj)
+		intf_rules := convert_rule_objects(
+			raw_info.Intf_rules, ip_net2obj, prt2obj)
+		rules := convert_rule_objects(raw_info.Rules, ip_net2obj, prt2obj)
 
 		filter_only := ip_net_list(jdata.Filter_only, ip_net2obj)
 		
@@ -2024,12 +2086,17 @@ func prepare_acls (path string) Router_Data {
 		setup_ip_net_relation(ip_net2obj)
 
 		acl_info := ACL_Info{
-			raw_info.Name,
-			raw_info.Is_std_acl == 1,
-			intf_rules, rules,
-			ip_net2obj,
-			filter_only, opt_networks, no_opt_addrs,
-			ip_net2obj["0.0.0.0/0"],
+			name: raw_info.Name,
+			is_std_acl: raw_info.Is_std_acl == 1,
+			intf_rules: intf_rules,
+			rules: rules,
+			prt2obj: prt2obj,
+			ip_net2obj: ip_net2obj,
+			filter_only: filter_only,
+			opt_networks: opt_networks,
+			no_opt_addrs: no_opt_addrs,
+			need_protect: need_protect,
+			network_00: ip_net2obj["0.0.0.0/0"],
 		}
 		acls[i] = &acl_info
     
@@ -2040,8 +2107,8 @@ func prepare_acls (path string) Router_Data {
 //            add_tcp_udp_icmp(prt2obj);
 		}
         
-//        setup_prt_relation($prt2obj);
-//        $acl_info->{prt_ip} = $prt2obj->{ip};
+		setup_prt_relation(prt2obj);
+		acl_info.prt_ip = prt2obj["ip"]
         
 		if model == "Linux" {
 //			find_chains(acl_info, router_data);
@@ -2053,16 +2120,17 @@ func prepare_acls (path string) Router_Data {
 //			intf_rules = move_rules_esp_ah(intf_rules, prt2obj)
 //			rules = move_rules_esp_ah(rules, prt2obj)
 
-			has_final_permit := true //check_final_permit(rules);
+			has_final_permit := check_final_permit(&acl_info);
 			add_permit       := raw_info.Add_permit == 1
-//			add_protect_rules(acl_info, has_final_permit || add_permit)
+			add_deny         := raw_info.Add_deny   == 1
+			add_protect_rules(&acl_info, has_final_permit || add_permit)
 			if do_objectgroup && raw_info.Is_crypto_acl != 1 {
 //				find_objectgroups(acl_info, router_data);
 			}
 			if filter_only != nil && !add_permit {
 //				add_local_deny_rules(acl_info, router_data);
 			} else if !has_final_permit {
-//				add_final_permit_deny_rule(acl_info, router_data);
+				add_final_permit_deny_rule(&acl_info, add_deny, add_permit);
 			}
 		}
 	}
@@ -2093,10 +2161,13 @@ func cisco_acl_addr (obj *IP_Net, model string) string {
 		} else {
 			
 			// Inverse mask bits.
+			// Must not inverse original mask, shared by multiple rules.
 			if model == "NX-OS" || model == "IOS" {
+				copy := make([]byte, len(mask));
 				for i, byte := range mask {
-					mask[i] = ^byte
+					copy[i] = ^byte
 				}
+				mask = copy;
 			}
 			mask_code := mask.String()
 			return ip_code + " " + mask_code
@@ -2240,7 +2311,7 @@ func print_cisco_acl (acl_info *ACL_Info, router_data Router_Data) {
 			action := get_cisco_action(rule.deny)
 			proto_code, src_port_code, dst_port_code :=
 			  cisco_prt_code(rule.src_range, rule.prt)
-			result := fmt.Sprintln(prefix, action, proto_code)
+			result := fmt.Sprintf("%s %s %s", prefix, action, proto_code)
 			result += " " + cisco_acl_addr(rule.src, model)
 			if src_port_code != "" {
 				result += " " + src_port_code
@@ -2298,6 +2369,7 @@ func print_combined (config []string, router_data Router_Data, out_path string) 
 	}
 	old := os.Stdout
 	defer func () { os.Stdout = old }()
+	os.Stdout = out_fd;
 
 	acl_hash := make(map[string]*ACL_Info)
 	for _, acl := range router_data.acls {
@@ -2416,7 +2488,7 @@ func apply_concurrent (device_names_fh *os.File, dir, prev string) {
 
 		if try_prev(device_name, dir, prev) {
 			reused++
-		} else if (0 < workers_left) {
+		} else if 0 < workers_left {
 			// Start concurrent jobs at beginning.
 			/*
 			go pass2_file(device_name, dir, c)
