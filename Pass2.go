@@ -97,7 +97,8 @@ func create_ip_obj (ip_net string) (*IP_Net) {
 }
 
 func get_ip_obj (ip net.IP, mask net.IPMask, ip_net2obj Name2IP_Net) (*IP_Net) {
-	name := ip.String() + "/" + mask.String()
+	prefix, _ := mask.Size()
+	name := fmt.Sprintf("%s/%d", ip.String(), prefix)
 	obj, ok := ip_net2obj[name];
 	if !ok {
 		obj = &IP_Net{ net: &net.IPNet{ IP: ip, Mask: mask }, name: name }
@@ -243,7 +244,7 @@ func order_ranges (proto string, prt2obj Name2Proto, up *Proto) {
 	// Sort by low port. If low ports are equal, sort reverse by high port.
 	// I.e. larger ranges coming first, if there are multiple ranges
 	// with identical low port.
-	sort.SliceStable(ranges, func(i, j int) bool {
+	sort.Slice(ranges, func(i, j int) bool {
 		return ranges[i].ports[0] < ranges[j].ports[0] ||
 			ranges[i].ports[0] == ranges[j].ports[0] &&
 			ranges[i].ports[1] > ranges[j].ports[1]
@@ -743,190 +744,243 @@ sub add_local_deny_rules {
     push @$rules, { src => $network_00, dst => $network_00, prt => $prt_ip };
     return;
 }
+*/
 
-##############################################################################
+/*
 # Purpose    : Create a list of IP/mask objects from a hash of IP/mask names.
 #              Adjacent IP/mask objects are combined to larger objects.
 #              It is assumed, that no duplicate or redundant IP/mask objects
 #              are given.
-# Parameters : $hash - hash with IP/mask names as keys and 
-#                      IP/mask objects as values.
+# Parameters : $hash - hash with IP/mask objects as keys and 
+#                      rules as values.
 #              $ip_net2obj - hash of all known IP/mask objects
 # Result     : Returns reference to array of sorted and combined 
 #              IP/mask objects.
 #              Parameter $hash is changed to reflect combined IP/mask objects.
-sub combine_adjacent_ip_mask {
-    my ($hash, $ip_net2obj) = @_;
-
-    # Convert names to objects.
-    # Sort by mask. Adjacent networks will be adjacent elements then.
-    my $elements = [
-        sort { $a->{ip} cmp $b->{ip} || $a->{mask} cmp $b->{mask} }
-        map { $ip_net2obj->{$_} }
-        keys %$hash ];
-
-    # Find left and rigth part with identical mask and combine them
-    # into next larger network.
-    # Compare up to last but one element.
-    for (my $i = 0 ; $i < @$elements - 1 ; $i++) {
-        my $element1 = $elements->[$i];
-        my $element2 = $elements->[$i+1];
-        my $mask = $element1->{mask};
-        $mask eq $element2->{mask} or next;
-        my $prefix = mask2prefix($mask);
-        my $up_mask = prefix2mask($prefix-1);
-        my $ip = $element1->{ip};
-        ($ip & $up_mask) eq ($element2->{ip} & $up_mask) or next;
-        my $up_element = get_ip_obj($ip, $up_mask, $ip_net2obj);
-
-        # Substitute left part by combined network.
-        $elements->[$i] = $up_element;
-
-        # Remove right part.
-        splice @$elements, $i+1, 1;
-
-        # Add new element and remove left and rigth parts.
-        $hash->{$up_element->{name}} = $up_element;
-        delete $hash->{$element1->{name}};
-        delete $hash->{$element2->{name}};
-
-        if ($i > 0) {
-            my $next_bit = increment_ip(~$up_mask);
-
-            # Check previous network again, if newly created network
-            # is left part.
-            $i-- if ($ip & $next_bit);
-        }
-
-        # Only one element left.
-        # Condition of for-loop isn't effective, because of 'redo' below.
-        last if $i >= @$elements - 1;
-
-        # Compare current network again.
-        redo;
-    }
-    return $elements;
-}
-
-my $min_object_group_size = 2;
-
-sub find_objectgroups {
-    my ($acl_info, $router_data) = @_;
-    my $ip_net2obj = $acl_info->{ip_net2obj};
-
-    # Reuse identical groups from different ACLs.
-    my $size2first2group = $router_data->{obj_groups_hash} ||= {};
-    $router_data->{obj_group_counter} ||= 0;
-
-    # Leave 'intf_rules' untouched, because
-    # - these rules are ignored at ASA,
-    # - NX-OS needs them individually when optimizing need_protect.
-    my $rules = $acl_info->{rules};
-
-    # Find object-groups in src / dst of rules.
-    for my $this ('src', 'dst') {
-        my $that = $this eq 'src' ? 'dst' : 'src';
-        my %group_rule_tree;
-
-        # Find groups of rules with identical
-        # deny, src_range, prt, log, src/dst and different dst/src.
-        for my $rule (@$rules) {
-            my $deny      = $rule->{deny} || '';
-            my $that      = $rule->{$that}->{name};
-            my $this      = $rule->{$this}->{name};
-            my $src_range = $rule->{src_range} || '';
-            my $prt       = $rule->{prt};
-            my $key       = "$deny,$that,$src_range,$prt";
-            if (my $log = $rule->{log}) {
-                $key .= ",$log";
-            }
-            $group_rule_tree{$key}->{$this} = $rule;
-        }
-
-        # Find groups >= $min_object_group_size,
-        # mark rules belonging to one group.
-        for my $href (values %group_rule_tree) {
-
-            # $href is {dst/src => rule, ...}
-            keys %$href >= $min_object_group_size or next;
-
-            my $glue = {
-
-                # Indicator, that group has already beed added to some rule.
-                active => 0,
-
-                # object-key => rule, ...
-                hash => $href
-            };
-
-            # All this rules have identical deny, src_range, prt
-            # and dst/src and shall be replaced by a single new
-            # rule referencing an object group.
-            for my $rule (values %$href) {
-                $rule->{group_glue} = $glue;
-            }
-        }
-
-        # Find group with identical elements or define a new one.
-        my $get_group = sub {
-            my ($hash) = @_;
-
-            # Get sorted and combined list of objects from hash of names.
-            my $elements = combine_adjacent_ip_mask($hash, $ip_net2obj);
-
-            # If all elements have been combined into one single network,
-            # don't create a group, but take single element as result.
-            if (1 == @$elements) {
-                return $elements->[0];
-            }
-
-            # Use size and first element as keys for efficient hashing.
-            my $size  = @$elements;
-            my $first = $elements->[0]->{name};
-
-            # Search group with identical elements.
-          HASH:
-            for my $group (@{ $size2first2group->{$size}->{$first} }) {
-                my $href = $group->{hash};
-
-                # Check elements for equality.
-                for my $key (keys %$hash) {
-                    $href->{$key} or next HASH;
-                }
-
-                # Found $group with matching elements.
-                return $group;
-            }
-
-            # No group found, build new group.
-            my $group = { name     => "g$router_data->{obj_group_counter}", 
-                          elements => $elements,
-                          hash     => $hash, };
-            $router_data->{obj_group_counter}++;
-
-            # Store group for later printing of its definition.
-            push @{ $acl_info->{object_groups} }, $group;
-            push(@{ $size2first2group->{$size}->{$first} }, $group);
-            return $group;
-        };
-
-        # Build new list of rules using object groups.
-        my @new_rules;
-        for my $rule (@$rules) {
-            if (my $glue = delete $rule->{group_glue}) {
-                next if $glue->{active};
-                $glue->{active} = 1;
-                my $group = $get_group->($glue->{hash});
-                $rule->{$this} = $group;
-            }
-            push @new_rules, $rule;
-        }
-        $rules = \@new_rules;
-    }
-    $acl_info->{rules} = $rules;
-    return;
-}
 */
+func combine_adjacent_ip_mask (hash map[*IP_Net]*Expanded_Rule, ip_net2obj Name2IP_Net) []*IP_Net {
+
+    // Take objects from keys of map.
+    // Sort by mask. Adjacent networks will be adjacent elements then.
+	elements := make([]*IP_Net, 0, len(hash))
+	for element := range hash {
+		elements = append(elements, element)
+	}
+	sort.Slice(elements, func(i, j int) bool {
+		cmp := bytes.Compare(elements[i].net.IP, elements[j].net.IP)
+		if cmp < 0 { return true }
+		if cmp > 0 { return false }
+		return bytes.Compare(elements[i].net.Mask, elements[j].net.Mask) < 0
+	})
+
+	// Find left and rigth part with identical mask and combine them
+	// into next larger network.
+	// Compare up to last but one element.
+	for i := 0; i < len(elements) - 1 ; i++ {
+		element1 := elements[i]
+		element2 := elements[i+1]
+		mask := element1.net.Mask
+		if bytes.Compare(mask, element2.net.Mask) != 0 { continue }
+		prefix, bits := mask.Size()
+		prefix--
+		up_mask := net.CIDRMask(prefix, bits)
+		ip1 := element1.net.IP
+		ip2 := element2.net.IP
+      if bytes.Compare(ip1.Mask(up_mask), ip2.Mask(up_mask)) != 0 {
+			continue
+		}
+		up_element := get_ip_obj(ip1, up_mask, ip_net2obj)
+
+		// Substitute left part by combined network.
+		elements[i] = up_element
+
+		// Remove right part.
+		elements = append(elements[:i+1], elements[i+2:]...)
+
+		// Add new element and remove left and rigth parts.
+		hash[up_element] = hash[element1]
+		delete(hash, element1)
+		delete(hash, element2)
+
+		if i > 0 {
+			up2_mask := net.CIDRMask(prefix-1, bits)
+
+			// Check previous network again, if newly created network
+			// is right part, i.e. lowest bit of network part is set.
+			if !ip1.Equal(ip1.Mask(up2_mask)) {
+            i--
+			}
+		}
+
+		// Only one element left.
+		// Condition of for-loop isn't effective, because of 'i--' below.
+		if i >= len(elements) - 1 { break }
+
+		// Compare current network again.
+		i--
+    }
+    return elements
+}
+
+const min_object_group_size = 2
+
+type Obj_Group struct {
+	name string
+	elements []*IP_Net
+	ref *IP_Net
+	hash map[*IP_Net]*Expanded_Rule
+}
+
+// For searching efficiently for matching group.
+type group_key struct {
+	size int
+	first *IP_Net
+}
+
+func find_objectgroups (acl_info *ACL_Info, router_data *Router_Data) {
+	ip_net2obj := acl_info.ip_net2obj
+
+	// Reuse identical groups from different ACLs.
+	if router_data.obj_groups_hash == nil {
+		router_data.obj_groups_hash = make(map[group_key][]*Obj_Group)	
+	}
+	key2group := router_data.obj_groups_hash
+	
+	// Leave 'intf_rules' untouched, because
+	// - these rules are ignored at ASA,
+	// - NX-OS needs them individually when optimizing need_protect.
+	rules := acl_info.rules
+
+	// Find object-groups in src / dst of rules.
+	for _, this_is_dst := range []bool{false, true} {
+		type key struct {
+			deny bool
+			that *IP_Net
+			src_range, prt *Proto
+			log string
+		}
+		group_rule_tree := make(map[key]map[*IP_Net]*Expanded_Rule)
+
+		// Find groups of rules with identical
+		// deny, src_range, prt, log, src/dst and different dst/src.
+		for _, rule := range rules {
+			deny      := rule.deny;
+			src_range := rule.src_range
+			prt       := rule.prt
+			log       := rule.log
+			this      := rule.src
+			that      := rule.dst
+			if this_is_dst {
+				this, that = that, this
+			}
+			k := key{deny, that, src_range, prt, log}
+			href, ok := group_rule_tree[k]
+			if !ok {
+				href = make(map[*IP_Net]*Expanded_Rule)
+				group_rule_tree[k] = href
+			}
+			href[this] = rule
+		}
+
+		// Find groups >= min_object_group_size,
+		// mark rules belonging to one group.
+		type glue_key struct {
+			
+			// Indicator, that group has already been added to some rule.
+			active bool
+			
+			// object-key => rule, ...
+			hash map[*IP_Net]*Expanded_Rule
+		}
+		group_glue := make(map[*Expanded_Rule]*glue_key)
+		for _, href := range group_rule_tree {
+
+			// href is {dst/src => rule, ...}
+			if len(href) < min_object_group_size { continue }
+
+			glue := glue_key{ hash: href }
+
+			// All this rules have identical deny, src_range, prt
+			// and dst/src and shall be replaced by a single new
+			// rule referencing an object group.
+			for _, rule := range href {
+				group_glue[rule] = &glue;
+			}
+		}
+			
+		// Find group with identical elements
+		// or define a new one
+		// or return combined network.
+		// Returns IP_Net object with empty IP, representing a group.
+		get_group := func (hash map[*IP_Net]*Expanded_Rule) *IP_Net {
+
+			// Get sorted and combined list of objects from hash of objects.
+			// Hash is adjusted, if objects are combined.
+			elements := combine_adjacent_ip_mask(hash, ip_net2obj)
+			size := len(elements)
+
+			// If all elements have been combined into one single network,
+			// don't create a group, but take single element as result.
+			if 1 == size {
+				return elements[0]
+			}
+			
+			// Use size and first element as keys for efficient hashing.
+			first := elements[0]
+
+			// Search group with identical elements.
+			if groups, ok := key2group[group_key{size, first}]; ok {
+				HASH:			
+				for _, group := range groups {
+					href := group.hash
+					
+					// Check elements for equality.
+					for key := range hash {
+						if _, ok := href[key]; !ok { continue HASH }
+					}
+
+					// Found group with matching elements.
+					return group.ref
+            }
+			}
+				
+			// No group found, build new group.
+			name := fmt.Sprintf("g%d", router_data.obj_group_counter)
+			group_ref := &IP_Net{ net: nil, name: name }
+			group := &Obj_Group{
+				name:     name,
+				elements: elements,
+				hash:     hash,
+				ref:      group_ref,
+			}
+			router_data.obj_group_counter++
+
+			// Store group for later printing of its definition.
+			acl_info.object_groups = append(acl_info.object_groups, group)
+			key := group_key{size, first}
+			key2group[key] = append(key2group[key], group)
+			return group_ref
+		}
+
+		// Build new list of rules using object groups.
+		new_rules := make([]*Expanded_Rule, 0)
+		for _, rule := range rules {
+			if glue, ok := group_glue[rule]; ok {
+				if glue.active { continue }
+				glue.active = true
+				group_or_obj := get_group(glue.hash)
+				if this_is_dst {
+					rule.dst = group_or_obj
+				} else {
+					rule.src = group_or_obj
+				}
+			}
+			new_rules = append(new_rules, rule)
+		}
+		rules = new_rules
+	}
+	acl_info.rules = rules
+}
 
 func add_protect_rules (acl_info *ACL_Info, has_final_permit bool) {
 	need_protect := acl_info.need_protect
@@ -959,7 +1013,7 @@ func add_protect_rules (acl_info *ACL_Info, has_final_permit bool) {
 		}
 	}
 	if deleted != 0 {
-		new_rules := make([]*Expanded_Rule, len(rules) - deleted)
+		new_rules := make([]*Expanded_Rule, 0, len(rules) - deleted)
 		for _, rule := range rules {
 			if rule != nil {
 				new_rules = append(new_rules, rule)
@@ -1939,6 +1993,7 @@ type ACL_Info struct {
 	filter_only, opt_networks, no_opt_addrs, need_protect []*IP_Net
 	network_00 *IP_Net
 	prt_ip *Proto
+	object_groups []*Obj_Group
 }
 
 func convert_rule_objects (rules []*jRule, ip_net2obj Name2IP_Net, prt2obj Name2Proto) []*Expanded_Rule {
@@ -1976,7 +2031,9 @@ type Router_Data struct {
 	acls []*ACL_Info
 	log_deny string
 //	filter_only []string
-//	do_objectgroup bool
+	do_objectgroup bool
+	obj_groups_hash map[group_key][]*Obj_Group
+	obj_group_counter int
 }
 
 func ip_net_list (names []string, ip_net2obj Name2IP_Net) ([]*IP_Net) {
@@ -2048,13 +2105,14 @@ type jRule struct {
 	Src_range string	`json:"src_range"`
 }
 
-func prepare_acls (path string) Router_Data {
+func prepare_acls (path string) (router_data Router_Data) {
 	var jdata jRouter_Data
 	data, err := ioutil.ReadFile(path)
 	if err != nil { panic(err) }
 	err = easyjson.Unmarshal(data, &jdata)
 	if err != nil { panic(err) }
 	model := jdata.Model
+	router_data.model = model
 	do_objectgroup := jdata.Do_objectgroup == 1
 	raw_acls := jdata.Acls
 	acls := make([]*ACL_Info, len(raw_acls))
@@ -2125,7 +2183,7 @@ func prepare_acls (path string) Router_Data {
 			add_deny         := raw_info.Add_deny   == 1
 			add_protect_rules(&acl_info, has_final_permit || add_permit)
 			if do_objectgroup && raw_info.Is_crypto_acl != 1 {
-//				find_objectgroups(acl_info, router_data);
+				find_objectgroups(&acl_info, &router_data);
 			}
 			if filter_only != nil && !add_permit {
 //				add_local_deny_rules(acl_info, router_data);
@@ -2134,15 +2192,15 @@ func prepare_acls (path string) Router_Data {
 			}
 		}
 	}
-	return Router_Data{model: model, acls: acls};
+	router_data.acls = acls
+	return
 }
 
 // Given IP or group object, return its address in Cisco syntax.
 func cisco_acl_addr (obj *IP_Net, model string) string {
-	ip, mask := obj.net.IP, net.IP(obj.net.Mask)
 
 	// Object group.
-	if ip == nil {
+	if obj.net == nil {
 		var keyword string
 		if model == "NX-OS" {
 			keyword = "addrgroup"
@@ -2150,7 +2208,10 @@ func cisco_acl_addr (obj *IP_Net, model string) string {
 			keyword = "object-group"
 		}
 		return keyword + " " + obj.name
-	} else if mask.Equal(zero_ip) {
+	}
+
+	ip, mask := obj.net.IP, net.IP(obj.net.Mask)
+	if mask.Equal(zero_ip) {
 		return "any"
 	} else if model == "NX-OS" {
 		return obj.name
@@ -2175,40 +2236,29 @@ func cisco_acl_addr (obj *IP_Net, model string) string {
 	}
 }
 
-/*
-sub print_object_groups {
-    my ($groups, $acl_info, $model) = @_;
-    my $ip_net2obj = $acl_info->{ip_net2obj};
-    my $keyword = $model eq 'NX-OS'
-                ? 'object-group ip address'
-                : 'object-group network';
-    for my $group (@$groups) {
-
-        my $numbered = 10;
-        print "$keyword $group->{name}\n";
-        for my $element (@{ $group->{elements} }) {
-
-            # Reject network with mask = 0 in group.
-            # This occurs if optimization didn't work correctly.
-            $zero_ip eq $element->{mask} 
-                and fatal_err(
-                    "Unexpected network with mask 0 in object-group"
-                );
-            my $adr = cisco_acl_addr($element, $model);
-            if ($model eq 'NX-OS') {
-                print " $numbered $adr\n";
-                $numbered += 10;
-            }
-            elsif ($model eq 'ACE') {
-                print " $adr\n";
-            }
-            else {
-                print " network-object $adr\n";
-            }
-        }
-    }
+func print_object_groups (groups []*Obj_Group, acl_info *ACL_Info, model string) {
+	var keyword string
+	if model == "NX-OS" {
+		keyword = "object-group ip address"
+	} else {
+		keyword = "object-group network"
+	}
+	for _, group := range groups {
+		numbered := 10
+		fmt.Println(keyword, group.name)
+		for _, element := range group.elements {
+			adr := cisco_acl_addr(element, model)
+			if model == "NX-OS" {
+				fmt.Println("", numbered, adr)
+				numbered += 10
+			} else if (model == "ACE") {
+				fmt.Println("", adr)
+			} else {
+				fmt.Println(" network-object", adr)
+			}
+		}
+	}
 }
-*/
 
 // Returns 3 values for building a Cisco ACL:
 // permit <val1> <src> <val2> <dst> <val3>
@@ -2351,11 +2401,9 @@ func print_acl (acl_info *ACL_Info, router_data Router_Data) {
 		print_iptables_acl(acl_info)
       */
 	} else {
-		/*
 		if groups := acl_info.object_groups; groups != nil {
 			print_object_groups(groups, acl_info, model)
 		}
-      */   
 		print_cisco_acl(acl_info, router_data)
 	}
 }
