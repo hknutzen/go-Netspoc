@@ -694,69 +694,78 @@ sub move_rules_esp_ah {
     }
     return;
 }
-
-# Add deny and permit rules at device which filters only locally.
-sub add_local_deny_rules {
-    my ($acl_info, $router_data) = @_;
-    my $do_objectgroup = $router_data->{do_objectgroup};
-    my ($network_00, $prt_ip) = @{$acl_info}{qw(network_00 prt_ip)};
-    my $filter_only = $acl_info->{filter_only};
-    my $rules       = $acl_info->{rules};
-    
-    my $src_networks = 
-        $acl_info->{filter_any_src} ? [$network_00] : $filter_only;
-
-    if ($do_objectgroup) {
-
-        my $group_or_single = sub {
-            my ($obj_list) = @_;
-            if (1 == @$obj_list) {
-                return $obj_list->[0];
-            }
-
-            # Reuse object-group at all interfaces.
-            elsif (my $group = $router_data->{filter_only_group}) {
-                return $group;
-            }
-            else {
-                $group = { name => "g$router_data->{obj_group_counter}",
-                           elements => $obj_list };
-                $router_data->{obj_group_counter}++;
-                push @{ $acl_info->{object_groups} }, $group;
-                $router_data->{filter_only_group} = $group;
-                return $group;
-            }
-        };
-        push(@$rules, 
-             { deny => 1, 
-               src => $group_or_single->($src_networks), 
-               dst => $group_or_single->($filter_only), 
-               prt => $prt_ip });
-    }
-    else {
-        for my $src (@$src_networks) {
-            for my $dst (@$filter_only) {
-                push(@$rules,
-                     { deny => 1, src => $src, dst => $dst, prt => $prt_ip });
-            }
-        }
-    }
-    push @$rules, { src => $network_00, dst => $network_00, prt => $prt_ip };
-    return;
-}
 */
 
+func create_group (elements []*IP_Net, acl_info *ACL_Info, router_data *Router_Data) *Obj_Group{
+	name := fmt.Sprintf("g%d", router_data.obj_group_counter)
+	group_ref := &IP_Net{ net: nil, name: name }
+	group := &Obj_Group{
+		name:     name,
+		elements: elements,
+		ref:      group_ref,
+	}
+	router_data.obj_group_counter++
+
+	// Store group for later printing of its definition.
+	acl_info.object_groups = append(acl_info.object_groups, group)
+	return group
+}
+
+// Add deny and permit rules at device which filters only locally.
+func add_local_deny_rules (acl_info *ACL_Info, router_data *Router_Data) {
+	network_00, prt_ip := acl_info.network_00, acl_info.prt_ip
+	filter_only := acl_info.filter_only
+	var src_networks []*IP_Net
+	if acl_info.filter_any_src {
+		src_networks = []*IP_Net{network_00}
+	} else {
+		src_networks = filter_only
+	}
+	
+	if router_data.do_objectgroup {
+		group_or_single := func (obj_list []*IP_Net) *IP_Net {
+			if 1 == len(obj_list) {
+				return obj_list[0]
+			} else if nil != router_data.filter_only_group {
+
+				// Reuse object-group at all interfaces.
+				return router_data.filter_only_group
+			} else {
+				group := create_group(obj_list, acl_info, router_data)
+				router_data.filter_only_group = group.ref
+				return group.ref
+			}
+		}
+		acl_info.rules = append(acl_info.rules,
+			&Expanded_Rule{
+				deny: true,
+				src:  group_or_single(src_networks), 
+				dst:  group_or_single(filter_only), 
+				prt:  prt_ip,
+			})
+	} else {
+		for _, src := range src_networks {
+			for _, dst := range filter_only {
+				acl_info.rules = append(acl_info.rules,
+					&Expanded_Rule{ deny: true, src: src, dst: dst, prt: prt_ip })
+			}
+		}
+	}
+	acl_info.rules = append(acl_info.rules,
+		&Expanded_Rule{ src: network_00, dst: network_00, prt: prt_ip })
+}
+
 /*
-# Purpose    : Create a list of IP/mask objects from a hash of IP/mask names.
-#              Adjacent IP/mask objects are combined to larger objects.
-#              It is assumed, that no duplicate or redundant IP/mask objects
-#              are given.
-# Parameters : $hash - hash with IP/mask objects as keys and 
-#                      rules as values.
-#              $ip_net2obj - hash of all known IP/mask objects
-# Result     : Returns reference to array of sorted and combined 
-#              IP/mask objects.
-#              Parameter $hash is changed to reflect combined IP/mask objects.
+ Purpose    : Create a list of IP/mask objects from a hash of IP/mask names.
+              Adjacent IP/mask objects are combined to larger objects.
+              It is assumed, that no duplicate or redundant IP/mask objects
+              are given.
+ Parameters : $hash - hash with IP/mask objects as keys and 
+                      rules as values.
+              $ip_net2obj - hash of all known IP/mask objects
+ Result     : Returns reference to array of sorted and combined 
+              IP/mask objects.
+              Parameter $hash is changed to reflect combined IP/mask objects.
 */
 func combine_adjacent_ip_mask (hash map[*IP_Net]*Expanded_Rule, ip_net2obj Name2IP_Net) []*IP_Net {
 
@@ -828,13 +837,13 @@ type Obj_Group struct {
 	name string
 	elements []*IP_Net
 	ref *IP_Net
-	hash map[*IP_Net]*Expanded_Rule
+	hash map[string]bool
 }
 
 // For searching efficiently for matching group.
 type group_key struct {
 	size int
-	first *IP_Net
+	first string
 }
 
 func find_objectgroups (acl_info *ACL_Info, router_data *Router_Data) {
@@ -884,7 +893,7 @@ func find_objectgroups (acl_info *ACL_Info, router_data *Router_Data) {
 
 		// Find groups >= min_object_group_size,
 		// mark rules belonging to one group.
-		type glue_key struct {
+		type glue_type struct {
 			
 			// Indicator, that group has already been added to some rule.
 			active bool
@@ -892,13 +901,13 @@ func find_objectgroups (acl_info *ACL_Info, router_data *Router_Data) {
 			// object-key => rule, ...
 			hash map[*IP_Net]*Expanded_Rule
 		}
-		group_glue := make(map[*Expanded_Rule]*glue_key)
+		group_glue := make(map[*Expanded_Rule]*glue_type)
 		for _, href := range group_rule_tree {
 
 			// href is {dst/src => rule, ...}
 			if len(href) < min_object_group_size { continue }
 
-			glue := glue_key{ hash: href }
+			glue := glue_type{ hash: href }
 
 			// All this rules have identical deny, src_range, prt
 			// and dst/src and shall be replaced by a single new
@@ -926,17 +935,20 @@ func find_objectgroups (acl_info *ACL_Info, router_data *Router_Data) {
 			}
 			
 			// Use size and first element as keys for efficient hashing.
+			// Name of element is used, because elements are regenerated
+			// between pricessing of different ACLs.
 			first := elements[0]
+			key := group_key{size, first.name}
 
 			// Search group with identical elements.
-			if groups, ok := key2group[group_key{size, first}]; ok {
+			if groups, ok := key2group[key]; ok {
 				HASH:			
 				for _, group := range groups {
 					href := group.hash
 					
 					// Check elements for equality.
 					for key := range hash {
-						if _, ok := href[key]; !ok { continue HASH }
+						if _, ok := href[key.name]; !ok { continue HASH }
 					}
 
 					// Found group with matching elements.
@@ -945,21 +957,14 @@ func find_objectgroups (acl_info *ACL_Info, router_data *Router_Data) {
 			}
 				
 			// No group found, build new group.
-			name := fmt.Sprintf("g%d", router_data.obj_group_counter)
-			group_ref := &IP_Net{ net: nil, name: name }
-			group := &Obj_Group{
-				name:     name,
-				elements: elements,
-				hash:     hash,
-				ref:      group_ref,
+			group := create_group(elements, acl_info, router_data)
+			names_in_group := make(map[string]bool, len(hash))
+			for element := range hash {
+				names_in_group[element.name] = true
 			}
-			router_data.obj_group_counter++
-
-			// Store group for later printing of its definition.
-			acl_info.object_groups = append(acl_info.object_groups, group)
-			key := group_key{size, first}
+			group.hash = names_in_group
 			key2group[key] = append(key2group[key], group)
-			return group_ref
+			return group.ref
 		}
 
 		// Build new list of rules using object groups.
@@ -1991,6 +1996,7 @@ type ACL_Info struct {
 	prt2obj Name2Proto
 	ip_net2obj Name2IP_Net
 	filter_only, opt_networks, no_opt_addrs, need_protect []*IP_Net
+	filter_any_src bool
 	network_00 *IP_Net
 	prt_ip *Proto
 	object_groups []*Obj_Group
@@ -2030,7 +2036,7 @@ type Router_Data struct {
 	model string
 	acls []*ACL_Info
 	log_deny string
-//	filter_only []string
+	filter_only_group *IP_Net
 	do_objectgroup bool
 	obj_groups_hash map[group_key][]*Obj_Group
 	obj_group_counter int
@@ -2093,6 +2099,7 @@ type jACL_Info struct {
 	Opt_networks []string	`json:"opt_networks"`
 	No_opt_addrs []string	`json:"no_opt_addrs"`
 	Need_protect []string	`json:"need_protect"`
+	Filter_any_src int	`json:"filter_any_src"`
 	Is_crypto_acl int		`json:"is_crypto_acl"`
 	Add_permit int			`json:"add_permit"`
 	Add_deny int			`json:"add_deny"`
@@ -2114,6 +2121,7 @@ func prepare_acls (path string) (router_data Router_Data) {
 	model := jdata.Model
 	router_data.model = model
 	do_objectgroup := jdata.Do_objectgroup == 1
+	router_data.do_objectgroup = do_objectgroup
 	raw_acls := jdata.Acls
 	acls := make([]*ACL_Info, len(raw_acls))
 	for i, raw_info := range raw_acls {
@@ -2153,6 +2161,7 @@ func prepare_acls (path string) (router_data Router_Data) {
 			filter_only: filter_only,
 			opt_networks: opt_networks,
 			no_opt_addrs: no_opt_addrs,
+			filter_any_src: raw_info.Filter_any_src == 1,
 			need_protect: need_protect,
 			network_00: ip_net2obj["0.0.0.0/0"],
 		}
@@ -2186,7 +2195,7 @@ func prepare_acls (path string) (router_data Router_Data) {
 				find_objectgroups(&acl_info, &router_data);
 			}
 			if filter_only != nil && !add_permit {
-//				add_local_deny_rules(acl_info, router_data);
+				add_local_deny_rules(&acl_info, &router_data);
 			} else if !has_final_permit {
 				add_final_permit_deny_rule(&acl_info, add_deny, add_permit);
 			}
