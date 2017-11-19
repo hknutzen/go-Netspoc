@@ -651,50 +651,83 @@ sub join_ranges {
     }
     return $rules;
 }
-
-# Protocols ESP and AH are be placed first in Cisco ACL
-# for performance reasons.
-# These rules need to have a fixed order.
-# Otherwise the connection may be lost,
-# - if the device is accessed over an IPSec tunnel
-# - and we change the ACL incrementally.
-sub move_rules_esp_ah {
-    my ($acl_info) = @_;
-    my $prt2obj = $acl_info->{prt2obj};
-    my $prt_esp = $prt2obj->{50};
-    my $prt_ah  = $prt2obj->{51};
-    $prt_esp or $prt_ah or return;
-    for my $what (qw(intf_rules rules)) {
-        my $rules = $acl_info->{$what} or next;
-        my (@deny_rules, @crypto_rules, @permit_rules);
-        for my $rule (@$rules) {
-            if ($rule->{deny}) {
-                push @deny_rules, $rule;
-            }
-            elsif ($prt_esp and $rule->{prt} eq $prt_esp) {
-                push @crypto_rules, $rule;
-            }
-            elsif ($prt_ah and $rule->{prt} eq $prt_ah) {
-                push @crypto_rules, $rule;
-            }
-            else {
-                push @permit_rules, $rule;
-            }
-        }
-
-        # Sort crypto rules.
-        @crypto_rules =
-            sort({ my ($s_a, $d_a) = @{$a}{qw(src dst)};
-                   my ($s_b, $d_b) = @{$b}{qw(src dst)};
-                   $a->{prt}->{proto} <=> $b->{prt}->{proto} ||
-                   $s_a->{ip} cmp $s_b->{ip} || $s_a->{mask} cmp $s_b->{mask} ||
-                   $d_a->{ip} cmp $d_b->{ip} || $d_a->{mask} cmp $d_b->{mask} } 
-                 @crypto_rules);
-        $acl_info->{$what} = [ @deny_rules, @crypto_rules, @permit_rules ];
-    }
-    return;
-}
 */
+
+type Expanded_Rule struct {
+	deny bool
+	src, dst *IP_Net
+	prt, src_range	*Proto
+	log string
+}
+
+type ACL_Info struct {
+	name string
+	is_std_acl bool
+	intf_rules, rules Rules
+	prt2obj Name2Proto
+	ip_net2obj Name2IP_Net
+	filter_only, opt_networks, no_opt_addrs, need_protect []*IP_Net
+	filter_any_src bool
+	network_00 *IP_Net
+	prt_ip *Proto
+	object_groups []*Obj_Group
+}
+
+type Rules []*Expanded_Rule
+func (rules *Rules) push(rule *Expanded_Rule) {
+	*rules = append(*rules, rule)
+}
+	
+// Protocols ESP and AH are be placed first in Cisco ACL
+// for performance reasons.
+// These rules need to have a fixed order.
+// Otherwise the connection may be lost,
+// - if the device is accessed over an IPSec tunnel
+// - and we change the ACL incrementally.
+func move_rules_esp_ah (rules Rules, prt2obj Name2Proto) Rules {
+	prt_esp := prt2obj["50"]
+	prt_ah  := prt2obj["51"]
+	if prt_esp == nil && prt_ah == nil {  return rules }
+	if rules == nil { return nil }
+	var deny_rules, crypto_rules, permit_rules Rules
+	for _, rule := range rules {
+		if rule.deny {
+			deny_rules.push(rule)
+		} else if rule.prt == prt_esp || rule.prt == prt_ah {
+			crypto_rules.push(rule)
+		} else {
+			permit_rules.push(rule)
+		}
+	}
+	
+	// Sort crypto rules.
+	sort.Slice(crypto_rules, func(i, j int) bool {
+		switch strings.Compare(
+			crypto_rules[i].prt.proto,
+			crypto_rules[j].prt.proto) {
+			case -1: return true
+			case 1: return false
+			}
+		s_a := crypto_rules[i].src
+		s_b := crypto_rules[j].src
+		switch bytes.Compare(s_a.net.IP, s_b.net.IP) {
+		case -1: return true
+		case 1: return false
+		}
+		switch bytes.Compare(net.IP(s_a.net.Mask), net.IP(s_b.net.Mask)) {
+		case -1: return true
+		case 1: return false
+		}
+		d_a := crypto_rules[i].dst
+		d_b := crypto_rules[j].dst
+		switch bytes.Compare(d_a.net.IP, d_b.net.IP) {
+		case -1: return true
+		case 1: return false
+		}
+		return -1 == bytes.Compare(net.IP(d_a.net.Mask), net.IP(d_b.net.Mask))
+	})
+	return append(deny_rules, append(crypto_rules, permit_rules...)...)
+}
 
 func create_group (elements []*IP_Net, acl_info *ACL_Info, router_data *Router_Data) *Obj_Group{
 	name := fmt.Sprintf("g%d", router_data.obj_group_counter)
@@ -736,7 +769,7 @@ func add_local_deny_rules (acl_info *ACL_Info, router_data *Router_Data) {
 				return group.ref
 			}
 		}
-		acl_info.rules = append(acl_info.rules,
+		acl_info.rules.push(
 			&Expanded_Rule{
 				deny: true,
 				src:  group_or_single(src_networks), 
@@ -746,12 +779,12 @@ func add_local_deny_rules (acl_info *ACL_Info, router_data *Router_Data) {
 	} else {
 		for _, src := range src_networks {
 			for _, dst := range filter_only {
-				acl_info.rules = append(acl_info.rules,
+				acl_info.rules.push(
 					&Expanded_Rule{ deny: true, src: src, dst: dst, prt: prt_ip })
 			}
 		}
 	}
-	acl_info.rules = append(acl_info.rules,
+	acl_info.rules.push(
 		&Expanded_Rule{ src: network_00, dst: network_00, prt: prt_ip })
 }
 
@@ -968,7 +1001,7 @@ func find_objectgroups (acl_info *ACL_Info, router_data *Router_Data) {
 		}
 
 		// Build new list of rules using object groups.
-		new_rules := make([]*Expanded_Rule, 0)
+		new_rules := make(Rules, 0)
 		for _, rule := range rules {
 			if glue, ok := group_glue[rule]; ok {
 				if glue.active { continue }
@@ -1018,7 +1051,7 @@ func add_protect_rules (acl_info *ACL_Info, has_final_permit bool) {
 		}
 	}
 	if deleted != 0 {
-		new_rules := make([]*Expanded_Rule, 0, len(rules) - deleted)
+		new_rules := make(Rules, 0, len(rules) - deleted)
 		for _, rule := range rules {
 			if rule != nil {
 				new_rules = append(new_rules, rule)
@@ -1049,7 +1082,7 @@ func add_protect_rules (acl_info *ACL_Info, has_final_permit bool) {
 		if no_protect[intf] || !protect_map[intf] && !has_final_permit {
 			continue
 		}
-		acl_info.intf_rules = append(acl_info.intf_rules,
+		acl_info.intf_rules.push(
 			&Expanded_Rule{
 				deny: true,
 				src: network_00,
@@ -1075,13 +1108,13 @@ func check_final_permit (acl_info *ACL_Info) bool {
 // Add 'deny|permit ip any any' at end of ACL.
 func add_final_permit_deny_rule (acl_info *ACL_Info, add_deny, add_permit bool) {
 	if add_deny || add_permit { 
-		rule := Expanded_Rule{
-			deny: add_deny,
-			src: acl_info.network_00,
-			dst: acl_info.network_00,
-			prt: acl_info.prt_ip,
-		}
-		acl_info.rules = append(acl_info.rules, &rule)
+		acl_info.rules.push(
+			&Expanded_Rule{
+				deny: add_deny,
+				src: acl_info.network_00,
+				dst: acl_info.network_00,
+				prt: acl_info.prt_ip,
+			})
 	}
 }
 
@@ -1982,29 +2015,9 @@ sub print_iptables_acl {
 }
 */
 
-type Expanded_Rule struct {
-	deny bool
-	src, dst *IP_Net
-	prt, src_range	*Proto
-	log string
-}
-
-type ACL_Info struct {
-	name string
-	is_std_acl bool
-	intf_rules, rules []*Expanded_Rule
-	prt2obj Name2Proto
-	ip_net2obj Name2IP_Net
-	filter_only, opt_networks, no_opt_addrs, need_protect []*IP_Net
-	filter_any_src bool
-	network_00 *IP_Net
-	prt_ip *Proto
-	object_groups []*Obj_Group
-}
-
-func convert_rule_objects (rules []*jRule, ip_net2obj Name2IP_Net, prt2obj Name2Proto) []*Expanded_Rule {
+func convert_rule_objects (rules []*jRule, ip_net2obj Name2IP_Net, prt2obj Name2Proto) Rules {
 	if rules == nil { return nil }
-	var expanded []*Expanded_Rule
+	var expanded Rules
 	for _, rule := range rules {
 		src_list := ip_net_list(rule.Src, ip_net2obj)
 		dst_list := ip_net_list(rule.Dst, ip_net2obj)
@@ -2016,9 +2029,8 @@ func convert_rule_objects (rules []*jRule, ip_net2obj Name2IP_Net, prt2obj Name2
 		for _, src := range src_list {
 			for _, dst := range dst_list {
 				for _, prt := range prt_list {
-					expanded =
-						append(
-						expanded, &Expanded_Rule{
+					expanded.push(
+						&Expanded_Rule{
 							deny: rule.Deny == 1,
 							src: src,
 							dst: dst, 
@@ -2184,8 +2196,8 @@ func prepare_acls (path string) (router_data Router_Data) {
 //			intf_rules = join_ranges(intf_rules, prt2obj)
 //			rules = optimize_rules(rules, acl_info)
 //			rules = join_ranges(rules, prt2obj)
-//			intf_rules = move_rules_esp_ah(intf_rules, prt2obj)
-//			rules = move_rules_esp_ah(rules, prt2obj)
+			acl_info.intf_rules = move_rules_esp_ah(intf_rules, prt2obj)
+			acl_info.rules = move_rules_esp_ah(rules, prt2obj)
 
 			has_final_permit := check_final_permit(&acl_info);
 			add_permit       := raw_info.Add_permit == 1
@@ -2365,7 +2377,7 @@ func print_cisco_acl (acl_info *ACL_Info, router_data Router_Data) {
 		prefix = "access-list " + name + " extended"
 	}
 
-	for _, rules := range [][]*Expanded_Rule{intf_rules, rules} {
+	for _, rules := range []Rules{intf_rules, rules} {
 		for _, rule := range rules {
 			action := get_cisco_action(rule.deny)
 			proto_code, src_port_code, dst_port_code :=
