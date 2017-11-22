@@ -545,7 +545,7 @@ func join_ranges (rules Rules, prt2obj Name2Proto) Rules {
 		log, proto string
 	}
 	changed := false
-	rule_tree := make(map[key]*Rules)
+	rule_tree := make(map[key]Rules)
 	for _, rule := range rules {
 
 		// Only ranges which have a neighbor may be successfully optimized.
@@ -556,13 +556,12 @@ func join_ranges (rules Rules, prt2obj Name2Proto) Rules {
 			rule.deny, rule.src, rule.dst, rule.src_range, rule.log,
 			rule.prt.proto,
 		}
-		rule_tree[k].push(rule)
+		rule_tree[k] = append(rule_tree[k], rule)
 	}
 
 	rule2range := make(map[*Expanded_Rule][2]int)
 	rule2del := make(map[*Expanded_Rule]bool)
-	for _, rules_ref := range rule_tree {
-		sorted := *rules_ref
+	for _, sorted := range rule_tree {
 
 		// Nothing to do if only a single rule.
 		if len(sorted) < 2 { continue }
@@ -667,23 +666,29 @@ type Rules []*Expanded_Rule
 func (rules *Rules) push(rule *Expanded_Rule) {
 	*rules = append(*rules, rule)
 }
-	
+
+// Place those rules first in Cisco ACL that have
+// - attribute 'log'
+//   because larger rule must not be placed before them,
+// - protocols ESP or AH
+//   for performance reasons.
+// Crypto rules need to have a fixed order,	
 // Protocols ESP and AH are be placed first in Cisco ACL
 // for performance reasons.
 // These rules need to have a fixed order.
 // Otherwise the connection may be lost,
 // - if the device is accessed over an IPSec tunnel
 // - and we change the ACL incrementally.
-func move_rules_esp_ah (rules Rules, prt2obj Name2Proto) Rules {
+func move_rules_esp_ah (rules Rules, prt2obj Name2Proto, has_log bool) Rules {
 	prt_esp := prt2obj["50"]
 	prt_ah  := prt2obj["51"]
-	if prt_esp == nil && prt_ah == nil {  return rules }
+	if prt_esp == nil && prt_ah == nil && !has_log {  return rules }
 	if rules == nil { return nil }
 	var deny_rules, crypto_rules, permit_rules Rules
 	for _, rule := range rules {
 		if rule.deny {
 			deny_rules.push(rule)
-		} else if rule.prt == prt_esp || rule.prt == prt_ah {
+		} else if rule.prt == prt_esp || rule.prt == prt_ah || "" !=rule.log {
 			crypto_rules.push(rule)
 		} else {
 			permit_rules.push(rule)
@@ -2005,9 +2010,10 @@ sub print_iptables_acl {
 }
 */
 
-func convert_rule_objects (rules []*jRule, ip_net2obj Name2IP_Net, prt2obj Name2Proto) Rules {
-	if rules == nil { return nil }
+func convert_rule_objects (rules []*jRule, ip_net2obj Name2IP_Net, prt2obj Name2Proto) (Rules, bool) {
+	if rules == nil { return nil, false }
 	var expanded Rules
+	var has_log bool
 	for _, rule := range rules {
 		src_list := ip_net_list(rule.Src, ip_net2obj)
 		dst_list := ip_net_list(rule.Dst, ip_net2obj)
@@ -2015,6 +2021,9 @@ func convert_rule_objects (rules []*jRule, ip_net2obj Name2IP_Net, prt2obj Name2
 		var src_range *Proto
 		if rule.Src_range != "" {
 			src_range = prt(rule.Src_range, prt2obj)
+		}
+		if rule.Log != "" {
+			has_log = true
 		}
 		for _, src := range src_list {
 			for _, dst := range dst_list {
@@ -2026,13 +2035,14 @@ func convert_rule_objects (rules []*jRule, ip_net2obj Name2IP_Net, prt2obj Name2
 							dst: dst, 
 							src_range : src_range,
 							prt: prt,
+							log: rule.Log,
 							opt_secondary: rule.Opt_secondary == 1,
 						})
 				}
 			}
 		}
 	}
-	return expanded
+	return expanded, has_log
 }
 	
 type Router_Data struct {
@@ -2093,6 +2103,7 @@ type jRouter_Data struct {
 	Acls []jACL_Info		`json:"acls"`
 	Filter_only []string	`json:"filter_only"`
 	Do_objectgroup int	`json:"do_objectgroup"`
+	Log_deny string		`json:"log_deny"`
 }
 type jACL_Info struct {
 	Name string				`json:"name"`
@@ -2113,6 +2124,7 @@ type jRule struct {
 	Dst []string		`json:"dst"`
 	Prt []string		`json:"prt"`
 	Src_range string	`json:"src_range"`
+	Log string			`json:"log"`
 	Opt_secondary int	`json:"opt_secondary"`
 }
 
@@ -2124,6 +2136,7 @@ func prepare_acls (path string) (router_data Router_Data) {
 	if err != nil { panic(err) }
 	model := jdata.Model
 	router_data.model = model
+	router_data.log_deny = jdata.Log_deny
 	do_objectgroup := jdata.Do_objectgroup == 1
 	router_data.do_objectgroup = do_objectgroup
 	raw_acls := jdata.Acls
@@ -2135,9 +2148,10 @@ func prepare_acls (path string) (router_data Router_Data) {
 		ip_net2obj := make(Name2IP_Net)
 		prt2obj    := make(Name2Proto)
 
-		intf_rules := convert_rule_objects(
+		intf_rules, has_log1 := convert_rule_objects(
 			raw_info.Intf_rules, ip_net2obj, prt2obj)
-		rules := convert_rule_objects(raw_info.Rules, ip_net2obj, prt2obj)
+		rules, has_log2 := convert_rule_objects(
+			raw_info.Rules, ip_net2obj, prt2obj)
 
 		filter_only := ip_net_list(jdata.Filter_only, ip_net2obj)
 		
@@ -2188,8 +2202,8 @@ func prepare_acls (path string) (router_data Router_Data) {
 			intf_rules = join_ranges(intf_rules, prt2obj)
 			rules = optimize_rules(rules, acl_info)
 			rules = join_ranges(rules, prt2obj)
-			acl_info.intf_rules = move_rules_esp_ah(intf_rules, prt2obj)
-			acl_info.rules = move_rules_esp_ah(rules, prt2obj)
+			acl_info.intf_rules = move_rules_esp_ah(intf_rules, prt2obj, has_log1)
+			acl_info.rules = move_rules_esp_ah(rules, prt2obj, has_log2)
 
 			has_final_permit := check_final_permit(&acl_info);
 			add_permit       := raw_info.Add_permit == 1
