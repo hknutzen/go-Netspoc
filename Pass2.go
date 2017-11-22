@@ -32,6 +32,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"reflect"
 	"regexp"
 	"sort"
 	"strconv"
@@ -74,7 +75,8 @@ func diag_msg (msg string) {
 
 type IP_Net struct {
 	net *net.IPNet
-	opt_networks, no_opt_addrs, need_protect bool
+	opt_networks *IP_Net
+	no_opt_addrs, need_protect bool
 	name string
 	up *IP_Net
 	is_supernet_of_need_protect map[*IP_Net]bool
@@ -198,7 +200,7 @@ func setup_ip_net_relation (ip_net2obj Name2IP_Net) {
 		for _, network := range mask_ip_hash[string(mask)] {
 			up := network.up
 			if up == nil { continue }
-			if opt_networks := up.opt_networks; opt_networks {
+			if opt_networks := up.opt_networks; nil != opt_networks {
 				network.opt_networks = opt_networks
 			}
 		}
@@ -294,7 +296,7 @@ func order_ranges (proto string, prt2obj Name2Proto, up *Proto) {
 				i = check_subrange(b, b1, b2, i + 1)
 
 				// Stop at end of array.
-				if i != 0 { return 0 }
+				if i == 0 { return 0 }
 				continue
 			}
 
@@ -371,293 +373,281 @@ func setup_prt_relation (prt2obj Name2Proto) {
 #    my $action = $deny ? 'deny' : 'permit';
 #    return "$action $src->{name} $dst->{name} $prt->{name}";
 #}
-
-sub optimize_redundant_rules {
-    my ($cmp_hash, $chg_hash, $acl_info) = @_;
-    my $ip_net2obj = $acl_info->{ip_net2obj};
-    my $prt2obj    = $acl_info->{prt2obj};
-    my $changed;
-    while (my ($deny, $chg_hash) = each %$chg_hash) {
-     while (1) {
-      if (my $cmp_hash = $cmp_hash->{$deny}) {
-       while (my ($src_range_name, $chg_hash) = each %$chg_hash) {
-        my $src_range = $prt2obj->{$src_range_name};
-        while (1) {
-         if (my $cmp_hash = $cmp_hash->{$src_range->{name}}) {
-          while (my ($src_name, $chg_hash) = each %$chg_hash) {
-           my $src = $ip_net2obj->{$src_name};
-           while (1) {
-            if (my $cmp_hash = $cmp_hash->{$src->{name}}) {
-             while (my ($dst_name, $chg_hash) = each %$chg_hash) {
-              my $dst = $ip_net2obj->{$dst_name};
-              while (1) {
-               if (my $cmp_hash = $cmp_hash->{$dst->{name}}) {
-                for my $chg_rule (values %$chg_hash) {
-                 next if $chg_rule->{deleted};
-                 my $prt = $chg_rule->{prt};
-                 my $chg_log = $chg_rule->{log} || '';
-                 while (1) {
-                  if (my $cmp_rule = $cmp_hash->{$prt->{name}}) {
-                   my $cmp_log = $cmp_rule->{log} || '';
-                   if ($cmp_rule ne $chg_rule && $cmp_log eq $chg_log) {
-
-#                   debug "del: ", print_rule $chg_rule;
-                    $chg_rule->{deleted} = $cmp_rule;
-                    $changed = 1;
-                    last;
-                   }
-                  }
-                  $prt = $prt ->{up} or last;
-                 }
-                }
-               }
-               $dst = $dst->{up} or last;
-              }
-             }
-            }
-            $src = $src->{up} or last;
-           }
-          }
-         }
-         $src_range = $src_range->{up} or last;
-        }
-       }
-      }
-      last if $deny;
-      $deny = 1;
-     }
-    }
-    return $changed;
-}
-
-sub optimize_rules {
-    my ($rules, $acl_info) = @_;
-    my $prt_ip = $acl_info->{prt2obj}->{ip};
-    
-    # For comparing redundant rules.
-    my %rule_tree;
-
-    # Fill rule tree.
-    my $changed = 0;
-    for my $rule (@$rules) {
-
-        my ($src, $dst, $deny, $src_range, $prt) =
-            @{$rule}{qw(src dst deny src_range prt)};
-        $deny      ||= '';
-        $src_range ||= $prt_ip;
-        $src = $src->{name};
-        $dst = $dst->{name};
-        $src_range = $src_range->{name};
-        $prt = $prt->{name};
-
-        # Remove duplicate rules.
-        if ($rule_tree{$deny}->{$src_range}->{$src}->{$dst}->{$prt}) {
-            $rule->{deleted} = 1;
-            $changed = 1;
-            next;
-        }
-        $rule_tree{$deny}->{$src_range}->{$src}->{$dst}->{$prt} = $rule;
-    }
-
-    my $changed2 =
-        optimize_redundant_rules (\%rule_tree, \%rule_tree, $acl_info);
-    $changed ||= $changed2;
-
-    # Implement rules as secondary rule, if possible.
-    my %secondary_tree;
-    my $ip_key = $prt_ip->{name};
-  RULE:
-    for my $rule (@$rules) {
-        $rule->{opt_secondary} or next;
-        next if $rule->{deleted};
-
-        my ($src, $dst, $prt) = @{$rule}{qw(src dst prt)};
-        next if $src->{no_opt_addrs};
-        next if $dst->{no_opt_addrs};
-
-        # Replace obj by supernet.
-        if (my $supernet = $src->{opt_networks}) {
-            $src = $rule->{src} = $supernet;
-        }
-        if (my $supernet = $dst->{opt_networks} and not $dst->{need_protect}) {
-            $dst = $rule->{dst} = $supernet;
-        }
-
-        # Change protocol to IP.
-        $rule->{prt} = $prt_ip;
-
-        # Add new rule to secondary_tree. If multiple rules are
-        # converted to the same secondary rule, only the first one
-        # will be created.
-        $src = $src->{name};
-        $dst = $dst->{name};
-        if ($secondary_tree{''}->{$ip_key}->{$src}->{$dst}->{$ip_key}) {
-
-#           debug("sec delete: ", print_rule $rule);
-            $rule->{deleted} = 1;
-            $changed = 1;
-        }
-        else {
-
-#           debug("sec: ", print_rule $rule);
-            $secondary_tree{''}->{$ip_key}->{$src}->{$dst}->{$ip_key} = 
-                $rule;
-        }
-    }
-
-    if (keys %secondary_tree) {
-        $changed2 = optimize_redundant_rules(\%secondary_tree, 
-                                             \%secondary_tree, $acl_info);
-        $changed ||= $changed2;
-        $changed2 = optimize_redundant_rules(\%secondary_tree, 
-                                             \%rule_tree, $acl_info);
-        $changed ||= $changed2;
-    }
-
-    if ($changed) {
-        $rules = [ grep { not $_->{deleted} } @$rules ];
-    }
-    return $rules;
-}
-
-# Join adjacent port ranges.
-sub join_ranges {
-    my ($rules, $prt2obj) = @_;
-    my $changed;
-    my %rule_tree = ();
-  RULE:
-    for my $rule (@$rules) {
-        my ($deny, $src, $dst, $src_range, $prt) =
-            @{$rule}{qw(deny src dst src_range prt)};
-
-        # Only ranges which have a neighbor may be successfully optimized.
-        # Currently only dst_ranges are handled.
-        $prt->{has_neighbor} or next;
-
-        $deny      ||= '';
-        $src_range ||= '';
-        $rule_tree{$deny}->{$src}->{$dst}->{$src_range}->{$prt} = $rule;
-    }
-
-    # %rule_tree is {deny => href, ...}
-    for my $href (values %rule_tree) {
-
-        # $href is {src => href, ...}
-        for my $href (values %$href) {
-
-            # $href is {dst => href, ...}
-            for my $href (values %$href) {
-
-                # $href is {src_range => href, ...}
-                for my $src_range_ref (keys %$href) {
-                    my $href = $href->{$src_range_ref};
-
-                    # Nothing to do if only a single rule.
-                    next if values %$href == 1;
-
-                    # Values of %$href are rules with identical
-                    # deny/src/dst/src_range and a TCP or UDP protocol.
-                    #
-                    # Collect rules with identical log type and
-                    # identical protocol.
-                    my %key2rules;
-                    for my $rule (values %$href) {
-                        my $key = $rule->{prt}->{proto};
-                        if (my $log = $rule->{log}) {
-                            $key .= ",$log";
-                        }
-                        push @{ $key2rules{$key} }, $rule;
-                    }
-
-                    for my $rules (values %key2rules) {
-
-                        # When sorting these rules by low port number,
-                        # rules with adjacent protocols will placed
-                        # side by side. There can't be overlaps,
-                        # because they have been split in function
-                        # 'order_ranges'. There can't be sub-ranges,
-                        # because they have been deleted as redundant
-                        # already.
-                        my @sorted = sort {
-                            $a->{prt}->{range}->[0]
-                                <=> $b->{prt}->{range}->[0]
-                        } @$rules;
-                        @sorted >= 2 or next;
-                        my $i      = 0;
-                        my $rule_a = $sorted[$i];
-                        my ($a1, $a2) = @{ $rule_a->{prt}->{range} };
-                        while (++$i < @sorted) {
-                            my $rule_b = $sorted[$i];
-                            my ($b1, $b2) = @{ $rule_b->{prt}->{range} };
-                            if ($a2 + 1 == $b1) {
-                                
-                                # Found adjacent port ranges.
-                                if (my $range = delete $rule_a->{range}) {
-                                    
-                                    # Extend range of previous two or
-                                    # more elements.
-                                    $range->[1] = $b2;
-                                    $rule_b->{range} = $range;
-                                }
-                                else {
-                                    
-                                    # Combine ranges of $rule_a and $rule_b.
-                                    $rule_b->{range} = [ $a1, $b2 ];
-                                }
-                                
-                                # Mark previous rule as deleted.
-                                $rule_a->{deleted} = 1;
-                                $changed = 1;
-                            }
-                            $rule_a = $rule_b;
-                            ($a1, $a2) = ($b1, $b2);
-                        }
-                    }
-                }
-            }
-        }
-    }
-    if ($changed) {
-        my @rules;
-        for my $rule (@$rules) {
-
-            # Check and remove attribute 'deleted'.
-            next if delete $rule->{deleted};
-
-            # Process rules with joined port ranges.
-            # Remove auxiliary attribute {range} from rules.
-            if (my $range = delete $rule->{range}) {
-                my $proto = $rule->{prt}->{proto};
-                my $key   = "$proto $range->[0] $range->[1]";
-
-                # Try to find existing prt with matching range.
-                # This is needed for find_objectgroups to work.
-                my $new_prt = $prt2obj->{$key};
-                if (not $new_prt) {
-                    $new_prt = {
-                        proto => $proto,
-                        range => $range
-                    };
-                    $prt2obj->{$key} = $new_prt;
-                }
-                my $new_rule = { %$rule, prt => $new_prt };
-                push @rules, $new_rule;
-            }
-            else {
-                push @rules, $rule;
-            }
-        }
-        $rules = \@rules;
-    }
-    return $rules;
-}
 */
+
+// Build rule tree from nested hash maps.
+// Leaf nodes have rules as values.
+type Rule_tree1 map[*Proto]*Expanded_Rule
+type Rule_tree2 map[*IP_Net]Rule_tree1
+type Rule_tree3 map[*IP_Net]Rule_tree2
+type Rule_tree4 map[*Proto]Rule_tree3
+type Rule_tree  map[bool]Rule_tree4
+
+// Dynamically typed function adds next nesting level.
+// Hash map for subtree is created if necessary.
+func get_subtree(tree interface{}, key interface{}) interface{} {
+	t := reflect.ValueOf(tree)
+	k := reflect.ValueOf(key)
+	s := t.MapIndex(k)
+	// Create new map if necessary.
+	if !s.IsValid() {
+		s = reflect.MakeMap(t.Type().Elem())
+		t.SetMapIndex(k, s)
+	}
+	return s.Interface()
+}
+
+func optimize_redundant_rules (cmp_hash, chg_hash Rule_tree) bool { 
+	changed := false
+	for deny, chg_hash := range chg_hash {
+		for {
+			if cmp_hash, found := cmp_hash[deny]; found {
+				for src_range, chg_hash := range chg_hash {
+					for {
+						if cmp_hash, found := cmp_hash[src_range]; found {
+							for src, chg_hash := range chg_hash {
+								for {
+									if cmp_hash, found := cmp_hash[src]; found {
+										for dst, chg_hash := range chg_hash {
+											for {
+												if cmp_hash, found := cmp_hash[dst]; found {
+													for prt, chg_rule := range chg_hash {
+														if chg_rule.deleted { continue; }
+														for {
+															if cmp_rule, found := cmp_hash[prt]; found {
+																if cmp_rule != chg_rule &&
+																	cmp_rule.log == chg_rule.log {
+																	chg_rule.deleted = true
+																	changed = true
+																	break
+																}
+															}
+															prt = prt.up
+															if prt == nil { break }
+														}
+													}
+												}
+												dst = dst.up
+												if dst == nil { break }
+											}
+										}
+									}
+									src = src.up
+									if src == nil { break }
+								}
+							}
+						}
+						src_range = src_range.up
+						if src_range == nil { break }
+					}
+				}
+			}
+			if deny { break }
+			deny = true
+		}
+	}
+	return changed
+}
+
+func optimize_rules (rules Rules, acl_info ACL_Info) Rules {
+    prt_ip := acl_info.prt2obj["ip"]
+    
+	// For comparing redundant rules.
+	rule_tree := make(Rule_tree)
+
+	// Fill rule tree.
+	changed := false
+	for _, rule := range rules {
+		src_range := rule.src_range
+		if nil == src_range {
+			src_range = prt_ip
+		}
+		
+		// Dynamically typed operations.
+		subtree := get_subtree(rule_tree, rule.deny)
+		subtree  = get_subtree(subtree, src_range)
+		subtree  = get_subtree(subtree, rule.src)
+		
+		// Go back to static type 'Rule_tree1'.
+		subtree1 := get_subtree(subtree, rule.dst).(Rule_tree1)
+		if _, found := subtree1[rule.prt]; found {
+			rule.deleted = true
+			changed = true
+		} else {
+			subtree1[rule.prt] = rule
+		}
+	}
+
+	changed = optimize_redundant_rules (rule_tree, rule_tree) || changed
+	
+	// Implement rules as secondary rule, if possible.
+	secondary_tree := make(Rule_tree)
+	for _, rule := range rules {
+		if !rule.opt_secondary { continue }
+		if rule.deleted { continue }
+		if rule.src.no_opt_addrs { continue }
+		if rule.dst.no_opt_addrs { continue }
+		src_range := rule.src_range
+		if nil == src_range {
+			src_range = prt_ip
+		}
+
+		// Replace obj by supernet.
+		if nil != rule.src.opt_networks {
+			rule.src = rule.src.opt_networks
+		}
+		if nil != rule.dst.opt_networks && !rule.dst.need_protect {
+			rule.dst = rule.dst.opt_networks
+		}
+
+		// Change protocol to IP.
+		rule.prt = prt_ip
+
+		// Add new rule to secondary_tree. If multiple rules are
+		// converted to the same secondary rule, only the first one
+		// will be created.
+		subtree := get_subtree(secondary_tree, rule.deny)
+		subtree  = get_subtree(subtree, src_range)
+		subtree  = get_subtree(subtree, rule.src)
+		subtree1 := get_subtree(subtree, rule.dst).(Rule_tree1)
+		if _, found := subtree1[rule.prt]; found {
+			rule.deleted = true
+			changed = true
+		} else {
+			subtree1[rule.prt] = rule
+		}
+	}
+
+    if nil != secondary_tree {
+		 changed =
+			 optimize_redundant_rules(secondary_tree, secondary_tree) || changed
+		 changed =
+			 optimize_redundant_rules(secondary_tree, rule_tree) || changed
+    }
+
+	if changed {
+		new_rules := make(Rules, 0)
+		for _, rule := range rules {
+			if rule.deleted { continue }
+			new_rules.push(rule)
+		}
+		rules = new_rules
+    }
+	return rules
+}
+
+// Join adjacent port ranges.
+func join_ranges (rules Rules, prt2obj Name2Proto) Rules {
+	type key struct {
+		deny bool
+		src, dst *IP_Net
+		src_range *Proto
+		log, proto string
+	}
+	changed := false
+	rule_tree := make(map[key]*Rules)
+	for _, rule := range rules {
+
+		// Only ranges which have a neighbor may be successfully optimized.
+		// Currently only dst_ranges are handled.
+		if !rule.prt.has_neighbor { continue }
+
+		k := key{
+			rule.deny, rule.src, rule.dst, rule.src_range, rule.log,
+			rule.prt.proto,
+		}
+		rule_tree[k].push(rule)
+	}
+
+	rule2range := make(map[*Expanded_Rule][2]int)
+	rule2del := make(map[*Expanded_Rule]bool)
+	for _, rules_ref := range rule_tree {
+		sorted := *rules_ref
+
+		// Nothing to do if only a single rule.
+		if len(sorted) < 2 { continue }
+
+		// Values of rules are rules with identical
+		// deny/src/dst/src_range/log/TCP or UDP protocol type.
+
+		// When sorting these rules by low port number, rules with
+		// adjacent protocols will placed side by side. There can't be
+		// overlaps, because they have been split in function
+		// 'order_ranges'. There can't be sub-ranges, because they have
+		// been deleted as redundant already.
+		sort.Slice(sorted,  func(i, j int) bool {
+			return sorted[i].prt.ports[0] < sorted[j].prt.ports[0]
+		})
+		i      := 0
+		rule_a := sorted[i]
+		a1, a2 := rule_a.prt.ports[0], rule_a.prt.ports[1]
+		i++
+		for ; i < len(sorted) ; i++ {
+			rule_b := sorted[i]
+			b1, b2 := rule_b.prt.ports[0], rule_b.prt.ports[1]
+
+			// Found adjacent port ranges.
+			if a2 + 1 == b1 {
+                                
+				// Extend range of previous two or more elements.
+				if ports,ok := rule2range[rule_a]; ok {
+                                    
+					ports[1] = b2
+					rule2range[rule_b] = ports
+					delete(rule2range, rule_a)
+				} else {
+                                    
+					// Combine ranges of $rule_a and $rule_b.
+					rule2range[rule_b] = [...]int{ a1, b2 }
+				}
+                                
+				// Mark previous rule as deleted.
+				rule2del[rule_a] = true
+				changed = true
+			}
+			rule_a = rule_b
+			a1, a2 = b1, b2
+		}
+	}
+
+	if changed {
+		var new_rules Rules
+		for _, rule := range rules {
+
+			// Ignore deleted rules
+			if rule2del[rule] { continue }
+
+			// Process rules with joined port ranges.
+			if ports, ok := rule2range[rule]; ok {
+				proto := rule.prt.proto
+				key   := fmt.Sprintf("%s %i %i", proto, ports[0], ports[1])
+
+				// Try to find existing prt with matching range.
+				// This is needed for find_objectgroups to work.
+				new_prt, ok := prt2obj[key]
+				if !ok {
+					new_prt = &Proto{ proto: proto, ports: ports }
+					prt2obj[key] = new_prt
+				}
+				new_rule := *rule
+				new_rule.prt = new_prt
+				new_rules.push(&new_rule)
+			} else {
+				new_rules.push(rule)
+			}
+		}
+		rules = new_rules
+    }
+    return rules
+}
 
 type Expanded_Rule struct {
 	deny bool
 	src, dst *IP_Net
 	prt, src_range	*Proto
 	log string
+	deleted bool
+	opt_secondary bool
 }
 
 type ACL_Info struct {
@@ -2036,6 +2026,7 @@ func convert_rule_objects (rules []*jRule, ip_net2obj Name2IP_Net, prt2obj Name2
 							dst: dst, 
 							src_range : src_range,
 							prt: prt,
+							opt_secondary: rule.Opt_secondary == 1,
 						})
 				}
 			}
@@ -2122,6 +2113,7 @@ type jRule struct {
 	Dst []string		`json:"dst"`
 	Prt []string		`json:"prt"`
 	Src_range string	`json:"src_range"`
+	Opt_secondary int	`json:"opt_secondary"`
 }
 
 func prepare_acls (path string) (router_data Router_Data) {
@@ -2151,7 +2143,7 @@ func prepare_acls (path string) (router_data Router_Data) {
 		
 		opt_networks := ip_net_list(raw_info.Opt_networks, ip_net2obj)
 		for _, obj := range opt_networks {
-			obj.opt_networks = true
+			obj.opt_networks = obj
 		}
 		no_opt_addrs := ip_net_list(raw_info.No_opt_addrs, ip_net2obj)
 		for _, obj := range no_opt_addrs {
@@ -2192,10 +2184,10 @@ func prepare_acls (path string) (router_data Router_Data) {
 		if model == "Linux" {
 //			find_chains(acl_info, router_data);
 		} else {
-//			intf_rules = optimize_rules(intf_rules, acl_info)
-//			intf_rules = join_ranges(intf_rules, prt2obj)
-//			rules = optimize_rules(rules, acl_info)
-//			rules = join_ranges(rules, prt2obj)
+			intf_rules = optimize_rules(intf_rules, acl_info)
+			intf_rules = join_ranges(intf_rules, prt2obj)
+			rules = optimize_rules(rules, acl_info)
+			rules = join_ranges(rules, prt2obj)
 			acl_info.intf_rules = move_rules_esp_ah(intf_rules, prt2obj)
 			acl_info.rules = move_rules_esp_ah(rules, prt2obj)
 
@@ -2313,7 +2305,7 @@ func cisco_prt_code (src_range, prt *Proto) (t1, t2, t3 string) {
 			}
 		}
 		var src_prt string
-		if src_prt != "" {
+		if nil != src_range {
 			src_prt = port_code(src_range)
 		}
 		return proto, src_prt, dst_prt
