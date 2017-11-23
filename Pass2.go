@@ -619,7 +619,7 @@ func join_ranges (rules Rules, prt2obj Name2Proto) Rules {
 			// Process rules with joined port ranges.
 			if ports, ok := rule2range[rule]; ok {
 				proto := rule.prt.proto
-				key   := fmt.Sprintf("%s %i %i", proto, ports[0], ports[1])
+				key   := fmt.Sprintf("%s %d %d", proto, ports[0], ports[1])
 
 				// Try to find existing prt with matching range.
 				// This is needed for find_objectgroups to work.
