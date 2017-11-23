@@ -375,28 +375,6 @@ func setup_prt_relation (prt2obj Name2Proto) {
 #}
 */
 
-// Build rule tree from nested hash maps.
-// Leaf nodes have rules as values.
-type Rule_tree1 map[*Proto]*Expanded_Rule
-type Rule_tree2 map[*IP_Net]Rule_tree1
-type Rule_tree3 map[*IP_Net]Rule_tree2
-type Rule_tree4 map[*Proto]Rule_tree3
-type Rule_tree  map[bool]Rule_tree4
-
-// Dynamically typed function adds next nesting level.
-// Hash map for subtree is created if necessary.
-func get_subtree(tree interface{}, key interface{}) interface{} {
-	t := reflect.ValueOf(tree)
-	k := reflect.ValueOf(key)
-	s := t.MapIndex(k)
-	// Create new map if necessary.
-	if !s.IsValid() {
-		s = reflect.MakeMap(t.Type().Elem())
-		t.SetMapIndex(k, s)
-	}
-	return s.Interface()
-}
-
 func optimize_redundant_rules (cmp_hash, chg_hash Rule_tree) bool { 
 	changed := false
 	for deny, chg_hash := range chg_hash {
@@ -449,33 +427,61 @@ func optimize_redundant_rules (cmp_hash, chg_hash Rule_tree) bool {
 	return changed
 }
 
-func optimize_rules (rules Rules, acl_info ACL_Info) Rules {
-    prt_ip := acl_info.prt2obj["ip"]
-    
-	// For comparing redundant rules.
-	rule_tree := make(Rule_tree)
+// Build rule tree from nested maps.
+// Leaf nodes have rules as values.
+type Rule_tree1 map[*Proto]*Expanded_Rule
+type Rule_tree2 map[*IP_Net]Rule_tree1
+type Rule_tree3 map[*IP_Net]Rule_tree2
+type Rule_tree4 map[*Proto]Rule_tree3
+type Rule_tree  map[bool]Rule_tree4
 
-	// Fill rule tree.
+// Dynamically typed function adds next nesting levels.
+// Map for subtrees is created if necessary.
+func dyn_tree(tree interface{}, keys ... interface{}) interface{} {
+	t := reflect.ValueOf(tree)
+	for _, key := range keys {
+		k := reflect.ValueOf(key)
+		s := t.MapIndex(k)
+		// Create new map if necessary.
+		if !s.IsValid() {
+			s = reflect.MakeMap(t.Type().Elem())
+			t.SetMapIndex(k, s)
+		}
+		t = s
+	}
+	return t.Interface()
+}
+
+func optimize_rules (rules Rules, acl_info ACL_Info) Rules {
+	prt_ip := acl_info.prt2obj["ip"]
 	changed := false
-	for _, rule := range rules {
+
+	// Add rule to rule tree.
+	add_rule := func (rule_tree Rule_tree, rule *Expanded_Rule) {
 		src_range := rule.src_range
 		if nil == src_range {
 			src_range = prt_ip
 		}
-		
-		// Dynamically typed operations.
-		subtree := get_subtree(rule_tree, rule.deny)
-		subtree  = get_subtree(subtree, src_range)
-		subtree  = get_subtree(subtree, rule.src)
-		
+	
+		// Build nested rule_tree by dynamically typed operations.
 		// Go back to static type 'Rule_tree1'.
-		subtree1 := get_subtree(subtree, rule.dst).(Rule_tree1)
+		subtree1 :=
+			dyn_tree(rule_tree, rule.deny, src_range, rule.src, rule.dst).
+			(Rule_tree1)
 		if _, found := subtree1[rule.prt]; found {
 			rule.deleted = true
 			changed = true
 		} else {
 			subtree1[rule.prt] = rule
 		}
+	}
+
+	// For comparing redundant rules.
+	rule_tree := make(Rule_tree)
+
+	// Fill rule tree.
+	for _, rule := range rules {
+		add_rule(rule_tree, rule)
 	}
 
 	changed = optimize_redundant_rules (rule_tree, rule_tree) || changed
@@ -487,10 +493,6 @@ func optimize_rules (rules Rules, acl_info ACL_Info) Rules {
 		if rule.deleted { continue }
 		if rule.src.no_opt_addrs { continue }
 		if rule.dst.no_opt_addrs { continue }
-		src_range := rule.src_range
-		if nil == src_range {
-			src_range = prt_ip
-		}
 
 		// Replace obj by supernet.
 		if nil != rule.src.opt_networks {
@@ -502,28 +504,16 @@ func optimize_rules (rules Rules, acl_info ACL_Info) Rules {
 
 		// Change protocol to IP.
 		rule.prt = prt_ip
-
-		// Add new rule to secondary_tree. If multiple rules are
-		// converted to the same secondary rule, only the first one
-		// will be created.
-		subtree := get_subtree(secondary_tree, rule.deny)
-		subtree  = get_subtree(subtree, src_range)
-		subtree  = get_subtree(subtree, rule.src)
-		subtree1 := get_subtree(subtree, rule.dst).(Rule_tree1)
-		if _, found := subtree1[rule.prt]; found {
-			rule.deleted = true
-			changed = true
-		} else {
-			subtree1[rule.prt] = rule
-		}
+		
+		add_rule(secondary_tree, rule)
 	}
 
-    if nil != secondary_tree {
-		 changed =
-			 optimize_redundant_rules(secondary_tree, secondary_tree) || changed
-		 changed =
-			 optimize_redundant_rules(secondary_tree, rule_tree) || changed
-    }
+	if 0 != len(secondary_tree) {
+		changed =
+			optimize_redundant_rules(secondary_tree, secondary_tree) || changed
+		changed =
+			optimize_redundant_rules(secondary_tree, rule_tree) || changed
+	}
 
 	if changed {
 		new_rules := make(Rules, 0)
