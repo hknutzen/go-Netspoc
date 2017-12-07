@@ -220,15 +220,12 @@ func mark_supernets_of_need_protect (need_protect []*IP_Net) {
 	}
 }
 
-/*
-# Needed for model=Linux.
-sub add_tcp_udp_icmp {
-    my ($prt2obj) = @_;
-    $prt2obj->{'tcp 1 65535'} ||= create_prt_obj('tcp 1 65535');
-    $prt2obj->{'udp 1 65535'} ||= create_prt_obj('udp 1 65535');
-    $prt2obj->{icmp} ||= create_prt_obj('icmp');
+// Needed for model=Linux.
+func add_tcp_udp_icmp (prt2obj Name2Proto) {
+	_ = prt("tcp 1 65535", prt2obj)
+	_ = prt("udp 1 65535", prt2obj)
+	_ = prt("icmp", prt2obj)
 }
-*/
 
 // Set {up} relation from port range to the smallest port range which
 // includes it.
@@ -643,6 +640,7 @@ type ACL_Info struct {
 	name string
 	is_std_acl bool
 	intf_rules, rules Rules
+	lrules Linux_Rules
 	prt2obj Name2Proto
 	ip_net2obj Name2IP_Net
 	filter_only, opt_networks, no_opt_addrs, need_protect []*IP_Net
@@ -1103,902 +1101,1037 @@ func add_final_permit_deny_rule (acl_info *ACL_Info, add_deny, add_permit bool) 
 	}
 }
 
+// Returns iptables code for filtering a protocol.
+func iptables_prt_code (src_range, prt *Proto) string {
+	proto := prt.proto
+	result := "-p " + proto
+	if proto == "tcp" || proto == "udp" {
+		port_code := func (range_obj *Proto) string {
+			ports := range_obj.ports
+			v1, v2 := ports[0], ports[1]
+			if v1 == v2 {
+				return fmt.Sprint(v1)
+			} else if v1 == 1 && v2 == 65535 {
+				return ""
+			} else if v2 == 65535 {
+				return fmt.Sprint(v1, ":")
+			} else if v1 == 1 {
+				return fmt.Sprint(":", v2)
+			} else {
+				return fmt.Sprint(v1, ":", v2)
+			}
+		}
+		if nil != src_range {
+			if sport := port_code(src_range); "" != sport {
+				result += " --sport " + sport
+			}
+		}
+		if dport := port_code(prt); "" != dport {
+			result += " --dport " + dport
+		}
+		return result
+	} else if proto == "icmp" {
+		type_ := prt.type_
+		if type_ != -1 {
+			code := prt.code
+			if code != -1 {
+				return fmt.Sprintf("%s --icmp-type %d/%d", result, type_, code)
+			} else {
+				return fmt.Sprintf("%s --icmp-type %d", result, type_)
+			}
+		} else {
+			return result
+		}
+	} else {
+		return result
+	}
+}
+
+
+// Handle iptables.
+
 /*
-# Returns iptables code for filtering a protocol.
-sub iptables_prt_code {
-    my ($src_range, $prt) = @_;
-    my $proto = $prt->{proto};
-
-    if ($proto eq 'tcp' or $proto eq 'udp') {
-        my $port_code = sub {
-            my ($range_obj) = @_;
-            my ($v1, $v2) = @{ $range_obj->{range} };
-            if ($v1 == $v2) {
-                return $v1;
-            }
-            elsif ($v1 == 1 and $v2 == 65535) {
-                return '';
-            }
-            elsif ($v2 == 65535) {
-                return "$v1:";
-            }
-            elsif ($v1 == 1) {
-                return ":$v2";
-            }
-            else {
-                return "$v1:$v2";
-            }
-        };
-        my $result = "-p $proto";
-        my $sport = $src_range && $port_code->($src_range);
-        $result .= " --sport $sport" if $sport;
-        my $dport = $port_code->($prt);
-        $result .= " --dport $dport" if $dport;
-        return $result;
-    }
-    elsif ($proto eq 'icmp') {
-        if (defined(my $type = $prt->{type})) {
-            if (defined(my $code = $prt->{code})) {
-                return "-p $proto --icmp-type $type/$code";
-            }
-            else {
-                return "-p $proto --icmp-type $type";
-            }
-        }
-        else {
-            return "-p $proto";
-        }
-    }
-    else {
-        return "-p $proto";
-    }
-}
-
-
-# Handle iptables.
-#
-#sub debug_bintree {
-#    my ($tree, $depth) = @_;
-#    $depth ||= '';
-#    my $ip      = bitstr($tree->{ip});
-#    my $mask    = mask2prefix($tree->{mask});
-#    my $subtree = $tree->{subtree} ? 'subtree' : '';
-#
-#    debug($depth, " $ip/$mask $subtree");
-#    debug_bintree($tree->{lo}, "${depth}l") if $tree->{lo};
-#    debug_bintree($tree->{hi}, "${depth}h") if $tree->{hi};
-#    return;
-#}
-
-# Nodes are reverse sorted before being added to bintree.
-# Redundant nodes are discarded while inserting.
-# A node with value of sub-tree S is discarded,
-# if some parent node already has sub-tree S.
-sub add_bintree;
-sub add_bintree {
-    my ($tree,    $node)      = @_;
-    my ($tree_ip, $tree_mask) = @{$tree}{qw(ip mask)};
-    my ($node_ip, $node_mask) = @{$node}{qw(ip mask)};
-    my $result;
-
-    # The case where new node is larger than root node will never
-    # occur, because nodes are sorted before being added.
-
-    if ($tree_mask lt $node_mask && match_ip($node_ip, $tree_ip, $tree_mask)) {
-
-        # Optimization for this special case:
-        # Root of tree has attribute {subtree} which is identical to
-        # attribute {subtree} of current node.
-        # Node is known to be less than root node.
-        # Hence node together with its subtree can be discarded
-        # because it is redundant compared to root node.
-        # ToDo:
-        # If this optimization had been done before merge_subtrees,
-        # it could have merged more subtrees.
-        if (   not $tree->{subtree}
-            or not $node->{subtree}
-            or $tree->{subtree} ne $node->{subtree})
-        {
-            my $prefix = mask2prefix($tree_mask);
-            my $mask = prefix2mask($prefix+1);
-            my $branch = match_ip($node_ip, $tree_ip, $mask) ? 'lo' : 'hi';
-            if (my $subtree = $tree->{$branch}) {
-                $tree->{$branch} = add_bintree $subtree, $node;
-            }
-            else {
-                $tree->{$branch} = $node;
-            }
-        }
-        $result = $tree;
-    }
-
-    # Create common root for tree and node.
-    else {
-        while (1) {
-            my $prefix = mask2prefix($tree_mask);
-            $tree_mask = prefix2mask($prefix-1);
-            last if ($node_ip & $tree_mask) eq ($tree_ip & $tree_mask);
-        }
-        $result = {
-            ip   => ($node_ip & $tree_mask),
-            mask => $tree_mask
-        };
-        @{$result}{qw(lo hi)} =
-          $node_ip lt $tree_ip ? ($node, $tree) : ($tree, $node);
-    }
-
-    # Merge adjacent sub-networks.
-  MERGE:
-    {
-        $result->{subtree} and last;
-        my $lo = $result->{lo} or last;
-        my $hi = $result->{hi} or last;
-        my $prefix = mask2prefix($result->{mask});
-        my $mask = prefix2mask($prefix+1);
-        $lo->{mask} eq $mask or last;
-        $hi->{mask} eq $mask or last;
-        $lo->{subtree} and $hi->{subtree} or last;
-        $lo->{subtree} eq $hi->{subtree} or last;
-
-        for my $key (qw(lo hi)) {
-            $lo->{$key} and last MERGE;
-            $hi->{$key} and last MERGE;
-        }
-
-#       debug('Merged: ', print_ip $lo->{ip},' ',
-#             print_ip $hi->{ip},'/',print_ip $hi->{mask});
-        $result->{subtree} = $lo->{subtree};
-        delete $result->{lo};
-        delete $result->{hi};
-    }
-    return $result;
-}
-
-# Build a binary tree for src/dst objects.
-sub gen_addr_bintree {
-    my ($elements, $tree) = @_;
-
-    # Sort in reverse order by mask and then by IP.
-    my @nodes =
-      sort { $b->{mask} cmp $a->{mask} || $b->{ip} cmp $a->{ip} }
-      map {
-        my ($ip, $mask) = @{$_}{qw(ip mask)};
-
-        # The tree's node is a simplified network object with
-        # missing attribute 'name' and extra 'subtree'.
-        { ip      => $ip,
-          mask    => $mask,
-          subtree => $tree->{$_->{name}}
-        }
-      } @$elements;
-    my $bintree = pop @nodes;
-    while (my $next = pop @nodes) {
-        $bintree = add_bintree $bintree, $next;
-    }
-
-    # Add attribute {noop} to node which doesn't add any test to
-    # generated rule.
-    $bintree->{noop} = 1 if $bintree->{mask} eq $zero_ip;
-
-#    debug_bintree($bintree);
-    return $bintree;
-}
-
-# Build a tree for src-range/prt objects. Sub-trees for tcp and udp
-# will be binary trees. Nodes have attributes {proto}, {range},
-# {type}, {code} like protocols (but without {name}).
-# Additional attributes for building the tree:
-# For tcp and udp:
-# {lo}, {hi} for sub-ranges of current node.
-# For other protocols:
-# {seq} an array of ordered nodes for sub protocols of current node.
-# Elements of {lo} and {hi} or elements of {seq} are guaranteed to be
-# disjoint.
-# Additional attribute {subtree} is set with corresponding subtree of
-# protocol object if current node comes from a rule and wasn't inserted
-# for optimization.
-sub gen_prt_bintree {
-    my ($elements, $tree) = @_;
-
-    my $ip_prt;
-    my (%top_prt, %sub_prt);
-
-    # Add all protocols directly below protocol 'ip' into hash %top_prt
-    # grouped by protocol. Add protocols below top protocols or below
-    # other protocols of current set of protocols to hash %sub_prt.
-  PRT:
-    for my $prt (@$elements) {
-        my $proto = $prt->{proto};
-        if ($proto eq 'ip') {
-            $ip_prt = $prt;
-            next PRT;
-        }
-
-        my $up = $prt->{up};
-
-        # Check if $prt is sub protocol of any other protocol of
-        # current set. But handle direct sub protocols of 'ip' as top
-        # protocols.
-        while ($up->{up}) {
-            if (my $subtree = $tree->{$up->{name}}) {
-
-                # Found sub protocol of current set.
-                # Optimization:
-                # Ignore the sub protocol if both protocols have
-                # identical subtrees.
-                # In this case we found a redundant sub protocol.
-                if ($tree->{$prt->{name}} ne $subtree) {
-                    push @{ $sub_prt{$up} }, $prt;
-                }
-                next PRT;
-            }
-            $up = $up->{up};
-        }
-
-        # Not a sub protocol (except possibly of IP).
-        my $key = $proto =~ /^\d+$/ ? 'proto' : $proto;
-        push @{ $top_prt{$key} }, $prt;
-    }
-
-    # Collect subtrees for tcp, udp, proto and icmp.
-    my @seq;
-
-# Build subtree of tcp and udp protocols.
-    #
-    # We need not to handle 'tcp established' because it is only used
-    # for stateless routers, but iptables is stateful.
-    my ($gen_lohitrees, $gen_rangetree);
-    $gen_lohitrees = sub {
-        my ($prt_aref) = @_;
-        if (not $prt_aref) {
-            return (undef, undef);
-        }
-        elsif (@$prt_aref == 1) {
-            my $prt = $prt_aref->[0];
-            my ($lo, $hi) = $gen_lohitrees->($sub_prt{$prt});
-            my $node = {
-                proto   => $prt->{proto},
-                range   => $prt->{range},
-                subtree => $tree->{$prt->{name}},
-                lo      => $lo,
-                hi      => $hi
-            };
-            return ($node, undef);
-        }
-        else {
-            my @ranges =
-              sort { $a->{range}->[0] <=> $b->{range}->[0] } @$prt_aref;
-
-            # Split array in two halves.
-            my $mid   = int($#ranges / 2);
-            my $left  = [ @ranges[ 0 .. $mid ] ];
-            my $right = [ @ranges[ $mid + 1 .. $#ranges ] ];
-            return ($gen_rangetree->($left), $gen_rangetree->($right));
-        }
-    };
-    $gen_rangetree = sub {
-        my ($prt_aref) = @_;
-        my ($lo, $hi) = $gen_lohitrees->($prt_aref);
-        return $lo if not $hi;
-        my $proto = $lo->{proto};
-
-        # Take low port from lower tree and high port from high tree.
-        my $range = [ $lo->{range}->[0], $hi->{range}->[1] ];
-
-        # Merge adjacent port ranges.
-        if (    $lo->{range}->[1] + 1 == $hi->{range}->[0]
-            and $lo->{subtree}
-            and $hi->{subtree}
-            and $lo->{subtree} eq $hi->{subtree})
-        {
-            my @hilo =
-              grep { defined $_ } $lo->{lo}, $lo->{hi}, $hi->{lo}, $hi->{hi};
-            if (@hilo <= 2) {
-
-#		debug("Merged: $lo->{range}->[0]-$lo->{range}->[1]",
-#		      " $hi->{range}->[0]-$hi->{range}->[1]");
-                my $node = {
-                    proto   => $proto,
-                    range   => $range,
-                    subtree => $lo->{subtree}
-                };
-                $node->{lo} = shift @hilo if @hilo;
-                $node->{hi} = shift @hilo if @hilo;
-                return $node;
-            }
-        }
-        return (
-            {
-                proto => $proto,
-                range => $range,
-                lo    => $lo,
-                hi    => $hi
-            }
-        );
-    };
-    for my $what (qw(tcp udp)) {
-        next if not $top_prt{$what};
-        push @seq, $gen_rangetree->($top_prt{$what});
-    }
-
-# Add single nodes for numeric protocols.
-    if (my $aref = $top_prt{proto}) {
-        for my $prt (sort { $a->{proto} <=> $b->{proto} } @$aref) {
-            my $node = { proto => $prt->{proto}, subtree => $tree->{$prt->{name}} };
-            push @seq, $node;
-        }
-    }
-
-# Build subtree of icmp protocols.
-    if (my $icmp_aref = $top_prt{icmp}) {
-        my %type2prt;
-        my $icmp_any;
-
-        # If one protocol is 'icmp any' it is the only top protocol,
-        # all other icmp protocols are sub protocols.
-        if (not defined $icmp_aref->[0]->{type}) {
-            $icmp_any  = $icmp_aref->[0];
-            $icmp_aref = $sub_prt{$icmp_any};
-        }
-
-        # Process icmp protocols having defined type and possibly defined code.
-        # Group protocols by type.
-        for my $prt (@$icmp_aref) {
-            my $type = $prt->{type};
-            push @{ $type2prt{$type} }, $prt;
-        }
-
-        # Parameter is array of icmp protocols all having
-        # the same type and different but defined code.
-        # Return reference to array of nodes sorted by code.
-        my $gen_icmp_type_code_sorted = sub {
-            my ($aref) = @_;
-            [
-                map {
-                    {
-                        proto   => 'icmp',
-                        type    => $_->{type},
-                        code    => $_->{code},
-                        subtree => $tree->{$_->{name}}
-                    }
-                  }
-                  sort { $a->{code} <=> $b->{code} } @$aref
-            ];
-        };
-
-        # For collecting subtrees of icmp subtree.
-        my @seq2;
-
-        # Process grouped icmp protocols having the same type.
-        for my $type (sort { $a <=> $b } keys %type2prt) {
-            my $aref2 = $type2prt{$type};
-            my $node2;
-
-            # If there is more than one protocol,
-            # all have same type and defined code.
-            if (@$aref2 > 1) {
-                my $seq3 = $gen_icmp_type_code_sorted->($aref2);
-
-                # Add a node 'icmp type any' as root.
-                $node2 = {
-                    proto => 'icmp',
-                    type  => $type,
-                    seq   => $seq3,
-                };
-            }
-
-            # One protocol 'icmp type any'.
-            else {
-                my $prt = $aref2->[0];
-                $node2 = {
-                    proto   => 'icmp',
-                    type    => $type,
-                    subtree => $tree->{$prt->{name}}
-                };
-                if (my $aref3 = $sub_prt{$prt}) {
-                    $node2->{seq} = $gen_icmp_type_code_sorted->($aref3);
-                }
-            }
-            push @seq2, $node2;
-        }
-
-        # Add root node for icmp subtree.
-        my $node;
-        if ($icmp_any) {
-            $node = {
-                proto   => 'icmp',
-                seq     => \@seq2,
-                subtree => $tree->{$icmp_any->{name}}
-            };
-        }
-        elsif (@seq2 > 1) {
-            $node = { proto => 'icmp', seq => \@seq2 };
-        }
-        else {
-            $node = $seq2[0];
-        }
-        push @seq, $node;
-    }
-
-# Add root node for whole tree.
-    my $bintree;
-    if ($ip_prt) {
-        $bintree = {
-            proto   => 'ip',
-            seq     => \@seq,
-            subtree => $tree->{$ip_prt->{name}}
-        };
-    }
-    elsif (@seq > 1) {
-        $bintree = { proto => 'ip', seq => \@seq };
-    }
-    else {
-        $bintree = $seq[0];
-    }
-
-    # Add attribute {noop} to node which doesn't need any test in
-    # generated chain.
-    $bintree->{noop} = 1 if $bintree->{proto} eq 'ip';
-    return $bintree;
-}
-
-sub find_chains {
-    my ($acl_info, $router_data) = @_;
-    my $rules      = $acl_info->{rules};
-    my $ip_net2obj = $acl_info->{ip_net2obj};
-    my $prt2obj    = $acl_info->{prt2obj};
-    my %ref_type = (
-        src       => $ip_net2obj,
-        dst       => $ip_net2obj,
-        src_range => $prt2obj,
-        prt       => $prt2obj,
-    );
-
-    my $prt_ip     = $prt2obj->{ip};
-    my $prt_icmp   = $prt2obj->{icmp};
-    my $prt_tcp    = $prt2obj->{'tcp 1 65535'};
-    my $prt_udp    = $prt2obj->{'udp 1 65535'};
-    my $network_00 = $ip_net2obj->{'0.0.0.0/0'};
-
-    # For generating names of chains.
-    # Initialize if called first time.
-    $router_data->{chain_counter} ||= 1;
-
-    # Set {action} attribute in $rule, so we can handle all properties
-    # of a rule in unified manner.
-    # Change {src_range} attribute.
-    for my $rule (@$rules) {
-        if (!$rule->{action}) {
-            $rule->{action} = $rule->{deny} ? 'deny' : 'permit';
-        }
-        my $src_range = $rule->{src_range};
-        if (not $src_range) {
-            my $proto = $rule->{prt}->{proto};
-
-            # Specify protocols tcp, udp, icmp in
-            # {src_range}, to get more efficient chains.
-            $src_range =
-                $proto eq 'tcp'  ? $prt_tcp
-              : $proto eq 'udp'  ? $prt_udp
-              : $proto eq 'icmp' ? $prt_icmp
-              :                    $prt_ip;
-            $rule->{src_range} = $src_range;
-        }
-    }
-
-    my %cache;
-
-#    my $print_tree;
-#    $print_tree = sub {
-#        my ($tree, $order, $depth) = @_;
-#        for my $name (keys %$tree) {
-#
-#            debug(' ' x $depth, $name);
-#            if ($depth < $#$order) {
-#                $print_tree->($tree->{$name}, $order, $depth + 1);
-#            }
-#        }
-#    };
-
-    my $insert_bintree = sub {
-        my ($tree, $order, $depth) = @_;
-        my $key      = $order->[$depth];
-        my $ref2x    = $ref_type{$key};
-        my @elements = map { $ref2x->{$_} } keys %$tree;
-
-        # Put prt/src/dst objects at the root of some subtree into a
-        # (binary) tree. This is used later to convert subsequent tests
-        # for ip/mask or port ranges into more efficient nested chains.
-        my $bintree;
-        if ($ref2x eq $ip_net2obj) {
-            $bintree = gen_addr_bintree(\@elements, $tree);
-        }
-        else {    # $ref2x eq $prt2obj
-            $bintree = gen_prt_bintree(\@elements, $tree);
-        }
-        return $bintree;
-    };
-
-    # Used by $merge_subtrees1 to find identical subtrees.
-    # Use hash for efficient lookup.
-    my %depth2size2subtrees;
-    my %subtree2bintree;
-
-    # Find and merge identical subtrees.
-    my $merge_subtrees1 = sub {
-        my ($tree, $order, $depth) = @_;
-
-      SUBTREE:
-        for my $subtree (values %$tree) {
-            my @keys = keys %$subtree;
-            my $size = @keys;
-
-            # Find subtree with identical keys and values;
-          FIND:
-            for my $subtree2 (@{ $depth2size2subtrees{$depth}->{$size} }) {
-                for my $key (@keys) {
-                    if (not $subtree2->{$key}
-                        or $subtree2->{$key} ne $subtree->{$key})
-                    {
-                        next FIND;
-                    }
-                }
-
-                # Substitute current subtree with found subtree.
-                $subtree = $subtree2bintree{$subtree2};
-                next SUBTREE;
-
-            }
-
-            # Found a new subtree.
-            push @{ $depth2size2subtrees{$depth}->{$size} }, $subtree;
-            $subtree = $subtree2bintree{$subtree} =
-              $insert_bintree->($subtree, $order, $depth + 1);
-        }
-    };
-
-    my $merge_subtrees = sub {
-        my ($tree, $order) = @_;
-
-        # Process leaf nodes first.
-        for my $href (values %$tree) {
-            for my $href (values %$href) {
-                $merge_subtrees1->($href, $order, 2);
-            }
-        }
-
-        # Process nodes next to leaf nodes.
-        for my $href (values %$tree) {
-            $merge_subtrees1->($href, $order, 1);
-        }
-
-        # Process nodes next to root.
-        $merge_subtrees1->($tree, $order, 0);
-        return $insert_bintree->($tree, $order, 0);
-    };
-
-    # Add new chain to current router.
-    my $new_chain = sub {
-        my ($rules) = @_;
-        my $counter = $router_data->{chain_counter}++;
-        my $chain   = { name  => "c$counter", rules => $rules, };
-        push @{ $router_data->{chains} }, $chain;
-        return $chain;
-    };
-
-    my $gen_chain;
-    $gen_chain = sub {
-        my ($tree, $order, $depth) = @_;
-        my $key = $order->[$depth];
-        my @rules;
-
-        # We need the original value later.
-        my $bintree = $tree;
-        while (1) {
-            my ($hi, $lo, $seq, $subtree) =
-              @{$bintree}{qw(hi lo seq subtree)};
-            $seq = undef if $seq and not @$seq;
-            if (not $seq) {
-                push @$seq, $hi if $hi;
-                push @$seq, $lo if $lo;
-            }
-            if ($subtree) {
-
-#               if($order->[$depth+1]&&
-#                  $order->[$depth+1] =~ /^(src|dst)$/) {
-#                   debug($order->[$depth+1]);
-#                   debug_bintree($subtree);
-#               }
-                my $rules = $cache{$subtree};
-                if (not $rules) {
-                    $rules =
-                      $depth + 1 >= @$order
-                      ? [ { action => $subtree } ]
-                      : $gen_chain->($subtree, $order, $depth + 1);
-                    if (@$rules > 1 and not $bintree->{noop}) {
-                        my $chain = $new_chain->($rules);
-                        $rules = [ { action => $chain, goto => 1 } ];
-                    }
-                    $cache{$subtree} = $rules;
-                }
-
-                my @add_keys;
-
-                # Don't use "goto", if some tests for sub-nodes of
-                # $subtree are following.
-                push @add_keys, (goto => 0)        if $seq;
-                push @add_keys, ($key => $bintree) if not $bintree->{noop};
-                if (@add_keys) {
-
-                    # Create a copy of each rule because we must not change
-                    # the original cached rules.
-                    push @rules, map {
-                        { (%$_, @add_keys) }
-                    } @$rules;
-                }
-                else {
-                    push @rules, @$rules;
-                }
-            }
-            last if not $seq;
-
-            # Take this value in next iteration.
-            $bintree = pop @$seq;
-
-            # Process remaining elements.
-            for my $node (@$seq) {
-                my $rules = $gen_chain->($node, $order, $depth);
-                push @rules, @$rules;
-            }
-        }
-        if (@rules > 1 and not $tree->{noop}) {
-
-            # Generate new chain. All elements of @seq are
-            # known to be disjoint. If one element has matched
-            # and branched to a chain, then the other elements
-            # need not be tested again. This is implemented by
-            # calling the chain using '-g' instead of the usual '-j'.
-            my $chain = $new_chain->(\@rules);
-            return [ { action => $chain, goto => 1, $key => $tree } ];
-        }
-        else {
-            return \@rules;
-        }
-    };
-
-    # Build rule trees. Generate and process separate tree for
-    # adjacent rules with same action.
-    my @rule_trees;
-    my %tree2order;
-    if (@$rules) {
-        my $prev_action = $rules->[0]->{action};
-
-        # Special rule as marker, that end of rules has been reached.
-        push @$rules, { action => 0 };
-        my $start = my $i = 0;
-        my $last = $#$rules;
-        my %count;
-        while (1) {
-            my $rule   = $rules->[$i];
-            my $action = $rule->{action};
-            if ($action eq $prev_action) {
-
-                # Count, which key has the largest number of
-                # different values.
-                for my $what (qw(src dst src_range prt)) {
-                    $count{$what}{ $rule->{$what} } = 1;
-                }
-                $i++;
-            }
-            else {
-
-                # Use key with smaller number of different values
-                # first in rule tree. This gives smaller tree and
-                # fewer tests in chains.
-                my @test_order =
-                  sort { keys %{ $count{$a} } <=> keys %{ $count{$b} } }
-                  qw(src_range dst prt src);
-                my $rule_tree;
-                my $end = $i - 1;
-                for (my $j = $start ; $j <= $end ; $j++) {
-                    my $rule = $rules->[$j];
-                    my ($action, $t1, $t2, $t3, $t4) =
-                      @{$rule}{ 'action', @test_order };
-                    ($t1, $t2, $t3, $t4) = 
-                        map { $_->{name} } ($t1, $t2, $t3, $t4);
-                    $rule_tree->{$t1}->{$t2}->{$t3}->{$t4} = $action;
-                }
-                push @rule_trees, $rule_tree;
-
-#   	    debug(join ', ', @test_order);
-                $tree2order{$rule_tree} = \@test_order;
-                last if not $action;
-                $start       = $i;
-                $prev_action = $action;
-            }
-        }
-        @$rules = ();
-    }
-
-    for (my $i = 0 ; $i < @rule_trees ; $i++) {
-        my $tree  = $rule_trees[$i];
-        my $order = $tree2order{$tree};
-
-#       $print_tree->($tree, $order, 0);
-        $tree = $merge_subtrees->($tree, $order);
-        my $result = $gen_chain->($tree, $order, 0);
-
-        # Goto must not be used in last rule of rule tree which is
-        # not the last tree.
-        if ($i != $#rule_trees) {
-            my $rule = $result->[-1];
-            delete $rule->{goto};
-        }
-
-        # Postprocess rules: Add missing attributes prt, src, dst
-        # with no-op values.
-        for my $rule (@$result) {
-            $rule->{src} ||= $network_00;
-            $rule->{dst} ||= $network_00;
-            my $prt     = $rule->{prt};
-            my $src_range = $rule->{src_range};
-            if (not $prt and not $src_range) {
-                $rule->{prt} = $prt_ip;
-            }
-            elsif (not $prt) {
-                $rule->{prt} =
-                    $src_range->{proto} eq 'tcp'  ? $prt_tcp
-                  : $src_range->{proto} eq 'udp'  ? $prt_udp
-                  : $src_range->{proto} eq 'icmp' ? $prt_icmp
-                  :                                 $prt_ip;
-            }
-        }
-        push @$rules, @$result;
-    }
-    $acl_info->{rules} = $rules;
+sub debug_bintree {
+    my ($tree, $depth) = @_;
+    $depth ||= '';
+    my $ip      = bitstr($tree->{ip});
+    my $mask    = mask2prefix($tree->{mask});
+    my $subtree = $tree->{subtree} ? 'subtree' : '';
+
+    debug($depth, " $ip/$mask $subtree");
+    debug_bintree($tree->{lo}, "${depth}l") if $tree->{lo};
+    debug_bintree($tree->{hi}, "${depth}h") if $tree->{hi};
     return;
-}
-
-# Given an IP and mask, return its address
-# as "x.x.x.x/x" or "x.x.x.x" if prefix == 32.
-sub prefix_code {
-    my ($ip_net) = @_;
-    my ($ip, $mask) = @{$ip_net}{qw(ip mask)};
-    my $ip_code     = bitstr2ip($ip);
-    my $prefix_code = mask2prefix($mask);
-    return $prefix_code == 32 ? $ip_code : "$ip_code/$prefix_code";
-}
-
-# Print chains of iptables.
-# Objects have already been normalized to ip/mask pairs.
-# NAT has already been applied.
-sub print_chains {
-    my ($router_data) = @_;
-    my $chains = $router_data->{chains};
-    @$chains or return;
-
-    my $acl_info   = $router_data->{acls}->[0];
-    my $prt2obj    = $acl_info->{prt2obj};
-    my $prt_ip     = $prt2obj->{ip};
-    my $prt_icmp   = $prt2obj->{icmp};
-    my $prt_tcp    = $prt2obj->{'tcp 1 65535'};
-    my $prt_udp    = $prt2obj->{'udp 1 65535'};
-
-    # Declare chain names.
-    for my $chain (@$chains) {
-        my $name = $chain->{name};
-        print ":$name -\n";
-    }
-
-    # Define chains.
-    for my $chain (@$chains) {
-        my $name   = $chain->{name};
-        my $prefix = "-A $name";
-
-#	my $steps = my $accept = my $deny = 0;
-        for my $rule (@{ $chain->{rules} }) {
-            my $action = $rule->{action};
-            my $action_code =
-                ref($action)        ? $action->{name}
-              : $action eq 'permit' ? 'ACCEPT'
-              :                       'droplog';
-
-            # Calculate maximal number of matches if
-            # - some rules matches (accept) or
-            # - all rules don't match (deny).
-#	    $steps += 1;
-#	    if ($action eq 'permit') {
-#		$accept = max($accept, $steps);
-#	    }
-#	    elsif ($action eq 'deny') {
-#		$deny = max($deny, $steps);
-#	    }
-#	    elsif ($rule->{goto}) {
-#		$accept = max($accept, $steps + $action->{a});
-#	    }
-#	    else {
-#		$accept = max($accept, $steps + $action->{a});
-#		$steps += $action->{d};
-#	    }
-
-            my $jump = $rule->{goto} ? '-g' : '-j';
-            my $result = "$jump $action_code";
-            if (my $src = $rule->{src}) {
-                if ($src->{mask} ne $zero_ip) {
-                    $result .= ' -s ' . prefix_code($src);
-                }
-            }
-            if (my $dst = $rule->{dst}) {
-                if ($dst->{mask} ne $zero_ip) {
-                    $result .= ' -d ' . prefix_code($dst);
-                }
-            }
-          ADD_PROTO:
-            {
-                my $src_range = $rule->{src_range};
-                my $prt       = $rule->{prt};
-                last ADD_PROTO if not $src_range and not $prt;
-                last ADD_PROTO if $prt and $prt->{proto} eq 'ip';
-                if (not $prt) {
-                    last ADD_PROTO if $src_range->{proto} eq 'ip';
-                    $prt =
-                        $src_range->{proto} eq 'tcp'  ? $prt_tcp
-                      : $src_range->{proto} eq 'udp'  ? $prt_udp
-                      : $src_range->{proto} eq 'icmp' ? $prt_icmp
-                      :                                 $prt_ip;
-                }
-
-#               debug("c ",print_rule $rule) if not $src_range or not $prt;
-                $result .= ' ' . iptables_prt_code($src_range, $prt);
-            }
-            print "$prefix $result\n";
-        }
-
-#	$deny = max($deny, $steps);
-#	$chain->{a} = $accept;
-#	$chain->{d} = $deny;
-#	print "# Max tests: Accept: $accept, Deny: $deny\n";
-    }
-
-    # Empty line as delimiter.
-    print "\n";
-    return;
-}
-
-sub iptables_acl_line {
-    my ($rule, $prefix) = @_;
-    my ($action, $src, $dst, $src_range, $prt) =
-      @{$rule}{qw(action src dst src_range prt)};
-    my $action_code =
-        ref($action)        ? $action->{name}
-      : $action eq 'permit' ? 'ACCEPT'
-      :                       'droplog';
-    my $jump = $rule->{goto} ? '-g' : '-j';
-    my $result = "$prefix $jump $action_code";
-    if ($src->{mask} ne $zero_ip) {
-        $result .= ' -s ' . prefix_code($src);
-    }
-    if ($dst->{mask} ne $zero_ip) {
-        $result .= ' -d ' . prefix_code($dst);
-    }
-    if ($prt->{proto} ne 'ip') {
-        $result .= ' ' . iptables_prt_code($src_range, $prt);
-    }
-    print "$result\n";
-    return;
-}
-
-sub print_iptables_acl {
-    my ($acl_info) = @_;
-    my $name = $acl_info->{name};
-    print ":$name -\n";
-    my $rules = $acl_info->{rules};
-    my $intf_prefix = "-A $name";
-    for my $rule (@$rules) {
-        iptables_acl_line($rule, $intf_prefix);
-    }
 }
 */
+
+// Value is Lrule_tree.
+type Lrule_tree map[Net_or_Prot]*Lrule_tree
+
+type Net_bintree struct {
+	net *net.IPNet
+	subtree NP_bintree
+	hi *Net_bintree
+	lo *Net_bintree
+	noop bool
+}
+
+// Nodes are reverse sorted before being added to bintree.
+// Redundant nodes are discarded while inserting.
+// A node with value of sub-tree S is discarded,
+// if some parent node already has sub-tree S.
+func add_bintree (tree *Net_bintree, node *Net_bintree) *Net_bintree {
+	tree_ip, tree_mask := tree.net.IP, tree.net.Mask
+	node_ip, node_mask := node.net.IP, node.net.Mask
+	prefix, bits := tree_mask.Size()
+	node_pref, _ := node_mask.Size()
+	var result *Net_bintree
+
+	// The case where new node is larger than root node will never
+	// occur, because nodes are sorted before being added.
+	
+	if prefix < node_pref && tree.net.Contains(node_ip) {
+		
+		// Optimization for this special case:
+		// Root of tree has attribute {subtree} which is identical to
+      // attribute {subtree} of current node.
+      // Node is known to be less than root node.
+      // Hence node together with its subtree can be discarded
+      // because it is redundant compared to root node.
+      // ToDo:
+      // If this optimization had been done before merge_subtrees,
+      // it could have merged more subtrees.
+		if nil == tree.subtree || nil == node.subtree ||
+			tree.subtree != node.subtree {
+			mask := net.CIDRMask(prefix + 1, bits)
+			var hilo **Net_bintree
+			if node_ip.Mask(mask).Equal(tree_ip) {
+				hilo = &tree.lo
+			} else {
+				hilo = &tree.hi
+			}
+			if nil != *hilo {
+				*hilo = add_bintree(*hilo, node)
+			} else {
+				*hilo = node
+			}
+		}
+		result = tree
+	} else {
+		
+		// Create common root for tree and node.
+		for {
+			prefix--
+			tree_mask := net.CIDRMask(prefix, bits)
+			if node_ip.Mask(tree_mask).Equal(tree_ip.Mask(tree_mask)) { break }
+		}
+		result = &Net_bintree{
+			net: &net.IPNet{IP: node_ip.Mask(tree_mask), Mask: tree_mask },
+		}
+		if bytes.Compare(node_ip, tree_ip) < 0 {
+			result.lo, result.hi = node, tree
+		} else {
+			result.hi, result.lo = node, tree
+		}
+	}
+
+	// Merge adjacent sub-networks.
+	for {
+		if nil != result.subtree { break }
+		lo, hi := result.lo, result.hi
+      if nil == lo || nil == result.hi { break }
+		prefix, _ := result.net.Mask.Size()
+		prefix++
+		if lo_prefix, _ := lo.net.Mask.Size(); prefix != lo_prefix { break }
+		if hi_prefix, _ := hi.net.Mask.Size(); prefix != hi_prefix { break }
+		if nil == lo.subtree || nil == hi.subtree { break }
+		if lo.subtree != hi.subtree { break }
+		if nil != lo.lo || nil != lo.hi || nil != hi.lo || nil != hi.hi { break }
+
+//    debug('Merged: ', print_ip $lo->{ip},' ',
+//          print_ip $hi->{ip},'/',print_ip $hi->{mask});
+		result.subtree = lo.subtree
+		result.lo = nil
+		result.hi = nil
+		break
+	}
+	return result
+}
+
+type Net_or_Prot interface{
+}
+
+// Build a binary tree for src/dst objects.
+func gen_addr_bintree(
+	elements []*IP_Net,
+	tree Lrule_tree,
+	tree2bintree map[*Lrule_tree]NP_bintree) *Net_bintree {
+
+	// The tree's node is a simplified network object with
+	// missing attribute 'name' and extra 'subtree'.
+	nodes := make([]*Net_bintree, len(elements))
+	for i, elem := range elements {
+		nodes[i] = &Net_bintree{
+			net: elem.net,
+			subtree: tree2bintree[tree[elem]],
+		}
+	}
+	
+	// Sort in reverse order by mask and then by IP.
+	sort.Slice(nodes, func(i, j int) bool {
+		switch bytes.Compare(
+			net.IP(nodes[i].net.Mask),
+			net.IP(nodes[j].net.Mask)) {
+			case -1: return false
+			case 1: return true
+			}
+		return bytes.Compare(nodes[i].net.IP, nodes[j].net.IP) == 1
+	})
+
+	var bintree *Net_bintree
+	bintree, nodes = nodes[0], nodes[1:]
+	for len(nodes) > 0 {
+		var node *Net_bintree
+		node, nodes = nodes[0], nodes[1:]
+		bintree = add_bintree(bintree, node)
+	}
+
+	// Add attribute {noop} to node which doesn't add any test to
+	// generated rule.
+	if prefix, _ := bintree.net.Mask.Size(); 0 == prefix {
+		bintree.noop = true
+	}
+
+	// debug_bintree($bintree);
+    return bintree;
+}
+
+func (tree *Net_bintree) Hi() NP_bintree { return tree.hi }
+func (tree *Net_bintree) Lo() NP_bintree { return tree.lo }
+func (tree *Net_bintree) Seq() []*Prt_bintree { return nil }
+func (tree *Net_bintree) Subtree() NP_bintree { return tree.subtree }
+func (tree *Net_bintree) Noop() bool { return tree.noop }
+
+// Build a tree for src-range/prt objects. Sub-trees for tcp and udp
+// will be binary trees. Nodes have attributes {proto}, {range},
+// {type}, {code} like protocols (but without {name}).
+// Additional attributes for building the tree:
+// For tcp and udp:
+// {lo}, {hi} for sub-ranges of current node.
+// For other protocols:
+// {seq} an array of ordered nodes for sub protocols of current node.
+// Elements of {lo} and {hi} or elements of {seq} are guaranteed to be
+// disjoint.
+// Additional attribute {subtree} is set with corresponding subtree of
+// protocol object if current node comes from a rule and wasn't inserted
+// for optimization.
+
+type Prt_bintree struct {
+	proto  string
+	ports [2]int
+	type_  int
+	code   int
+	subtree NP_bintree
+	hi     *Prt_bintree
+	lo     *Prt_bintree
+	seq    []*Prt_bintree
+	noop   bool
+}
+
+func gen_prt_bintree(
+	elements []*Proto,
+	tree Lrule_tree,
+	tree2bintree map[*Lrule_tree]NP_bintree) *Prt_bintree {
+	var ip_prt *Proto
+	top_prt := make(map[string][]*Proto)
+	sub_prt := make(map[*Proto][]*Proto)
+
+	// Add all protocols directly below protocol 'ip' into map top_prt
+	// grouped by protocol. Add protocols below top protocols or below
+	// other protocols of current set of protocols to map sub_prt.
+PRT:
+	for _, prt := range elements {
+		proto := prt.proto
+		if proto == "ip" {
+			ip_prt = prt
+			continue PRT
+		}
+
+		// Check if prt is sub protocol of any other protocol of
+		// current set. But handle direct sub protocols of 'ip' as top
+		// protocols.
+		for up := prt.up; nil != up.up; up = up.up {
+			if subtree, ok := tree[up]; ok {
+
+				// Found sub protocol of current set.
+				// Optimization:
+				// Ignore the sub protocol if both protocols have
+				// identical subtrees.
+				// In this case we found a redundant sub protocol.
+				if tree[prt] != subtree {
+					sub_prt[up] = append(sub_prt[up], prt)
+				}
+				continue PRT
+			}
+		}
+
+		// Not a sub protocol (except possibly of IP).
+		var key string
+		if _, err := strconv.ParseUint(proto, 10, 16); err == nil {
+			key = "proto"
+		} else {
+			key = proto
+		}
+		top_prt[key] = append(top_prt[key], prt)
+	}
+
+	// Collect subtrees for tcp, udp, proto and icmp.
+	var seq []*Prt_bintree
+
+	//Build subtree of tcp and udp protocols.
+	//
+	// We need not to handle 'tcp established' because it is only used
+	// for stateless routers, but iptables is stateful.
+	var gen_lohitrees func(prt_aref []*Proto) (*Prt_bintree, *Prt_bintree)
+	var gen_rangetree func(prt_aref []*Proto) *Prt_bintree
+	gen_lohitrees = func (prt_aref []*Proto) (*Prt_bintree, *Prt_bintree) {
+		switch len(prt_aref) {
+		case 0:
+			return nil, nil
+		case 1:
+			prt := prt_aref[0]
+			lo, hi := gen_lohitrees(sub_prt[prt])
+			node := &Prt_bintree{
+				proto:  	prt.proto,
+				ports: 	prt.ports,
+				subtree:	tree2bintree[tree[prt]],
+				lo:     	lo,
+				hi:     	hi,
+			}
+			return node, nil
+		default:
+			ports := make([]*Proto, len(prt_aref))
+			copy(ports, prt_aref)
+			sort.Slice(ports, func (i, j int) bool {
+				return ports[i].ports[0] < ports[j].ports[0]
+			})
+
+			// Split array in two halves.
+			mid   := len(ports) / 2
+			left  := ports[:mid]
+			right := ports[mid + 1:]
+			return gen_rangetree(left), gen_rangetree(right)
+		}
+	};
+	gen_rangetree = func (prt_aref []*Proto) *Prt_bintree {
+		lo, hi := gen_lohitrees(prt_aref)
+		if nil == hi { return lo }
+		proto := lo.proto
+
+      // Take low port from lower tree and high port from high tree.
+		ports := [2]int{lo.ports[0], hi.ports[1]}
+
+		// Merge adjacent port ranges.
+		if lo.ports[1] + 1 == hi.ports[0] &&
+			nil != lo.subtree && nil != hi.subtree && lo.subtree == hi.subtree {
+			
+			hilo := make([]*Prt_bintree, 0, 4)
+			for _, what := range []*Prt_bintree{lo.lo, lo.hi, hi.lo, hi.hi} {
+				if nil != what { _ = append(hilo, what) }
+			}
+			if len(hilo) <= 2 {
+
+//		debug("Merged: $lo->{range}->[0]-$lo->{range}->[1]",
+//		      " $hi->{range}->[0]-$hi->{range}->[1]");
+				node := &Prt_bintree{
+					proto:   proto,
+					ports:   ports,
+					subtree: lo.subtree,
+				}
+				if len(hilo) > 0 { node.lo = hilo[0] }
+				if len(hilo) > 1 { node.hi = hilo[1] }
+				return node
+			}
+		}
+		return &Prt_bintree{
+			proto:  proto,
+			ports:  ports,
+			lo:     lo,
+			hi:     hi,
+		}
+	}
+	for _, what := range []string{"tcp", "udp"} {
+		if aref, ok := top_prt[what]; ok {
+			seq = append(seq, gen_rangetree(aref))
+		}
+    }
+
+	// Add single nodes for numeric protocols.
+	if aref, ok := top_prt["proto"]; ok {
+		sort.Slice(aref, func(i, j int) bool {
+			return aref[i].proto < aref[j].proto
+		})
+		for _, prt := range aref {
+			node := &Prt_bintree{ proto: prt.proto, subtree: tree2bintree[tree[prt]] }
+			seq = append(seq, node)
+		}
+	}
+
+	// Build subtree of icmp protocols.
+	if icmp_aref, ok := top_prt["icmp"]; ok {
+		type2prt := make(map[int][]*Proto)
+		var icmp_any *Proto
+
+		// If one protocol is 'icmp any' it is the only top protocol,
+		// all other icmp protocols are sub protocols.
+		if -1 == icmp_aref[0].type_ {
+			icmp_any  = icmp_aref[0]
+			icmp_aref = sub_prt[icmp_any]
+		}
+
+		// Process icmp protocols having defined type and possibly defined code.
+		// Group protocols by type.
+		for _, prt := range icmp_aref {
+			type_ := prt.type_
+			type2prt[type_] = append(type2prt[type_], prt)
+		}
+
+		// Parameter is array of icmp protocols all having
+		// the same type and different but defined code.
+		// Return reference to array of nodes sorted by code.
+		gen_icmp_type_code_sorted := func (aref []*Proto) []*Prt_bintree {
+			sort.Slice(aref, func (i, j int) bool {
+				return aref[i].code < aref[j].code
+			})
+			result := make([]*Prt_bintree, len(aref))
+			for i, proto := range aref {
+				result[i] = &Prt_bintree{
+					proto:   "icmp",
+					type_:   proto.type_,
+					code:    proto.code,
+					subtree: tree2bintree[tree[proto]],
+				}
+			}
+         return result
+		}
+
+		// For collecting subtrees of icmp subtree.
+		var seq2 []*Prt_bintree
+
+		// Process grouped icmp protocols having the same type.
+		types := make([]int, 0, len(type2prt))
+		for type_ := range type2prt {
+			types = append(types, type_)
+		}
+		sort.Ints(types)
+		for _, type_ := range types {
+			aref2 := type2prt[type_]
+			var node2 *Prt_bintree
+
+			// If there is more than one protocol,
+			// all have same type and defined code.
+			if len(aref2) > 1 {
+				seq3 := gen_icmp_type_code_sorted(aref2)
+
+				// Add a node 'icmp type any' as root.
+				node2 = &Prt_bintree{
+                    proto: "icmp",
+                    type_: type_,
+                    seq:   seq3,
+				}
+			} else {
+
+            // One protocol 'icmp type any'.
+				prt := aref2[0]
+				node2 = &Prt_bintree{
+					proto: "icmp",
+					type_: type_,
+					subtree: tree2bintree[tree[prt]],
+				}
+				if aref3, ok  := sub_prt[prt]; ok {
+					node2.seq = gen_icmp_type_code_sorted(aref3)
+				}
+			}
+			seq2 = append(seq2, node2)
+		}
+		
+		// Add root node for icmp subtree.
+		var node *Prt_bintree
+		if icmp_any != nil {
+			node = &Prt_bintree{
+				proto: "icmp",
+				seq:   seq2,
+				subtree: tree2bintree[tree[icmp_any]],
+			}
+		} else if len(seq2) > 1 {
+			node = &Prt_bintree{
+				proto: "icmp",
+				seq:   seq2,
+			}
+		} else {
+			node = seq2[0]
+		}
+		seq = append(seq, node)
+	}
+
+	// Add root node for whole tree.
+	var bintree *Prt_bintree
+	if ip_prt != nil {
+		bintree = &Prt_bintree{
+			proto: "ip",
+			seq:   seq,
+			subtree: tree2bintree[tree[ip_prt]],
+		}
+	} else if len(seq) > 1 {
+		bintree =  &Prt_bintree{ proto: "ip", seq:   seq, }
+	} else {
+		bintree = seq[0]
+	}
+
+	// Add attribute {noop} to node which doesn't need any test in
+	// generated chain.
+	if bintree.proto == "ip" {
+		bintree.noop = true
+	}
+	return bintree
+}
+
+func (tree *Prt_bintree) Hi() NP_bintree { return tree.hi }
+func (tree *Prt_bintree) Lo() NP_bintree { return tree.lo }
+func (tree *Prt_bintree) Seq() []*Prt_bintree { return tree.seq }
+func (tree *Prt_bintree) Subtree() NP_bintree { return tree.subtree }
+func (tree *Prt_bintree) Noop() bool { return tree.noop }
+
+type Getter func (rule *Linux_Rule) interface{}
+type Getters [4]Getter
+type Setter func (rule *Linux_Rule, val interface{})
+type Setters [4]Setter
+type Chain struct {
+	name string
+	rules Linux_Rules
+}
+type NP_bintree interface{
+	Hi() NP_bintree
+	Lo() NP_bintree
+	Seq() []*Prt_bintree
+	Subtree() NP_bintree
+	Noop() bool
+}
+
+type Linux_Rule struct {
+	deny bool
+	src, dst *IP_Net
+	prt, src_range	*Proto
+	chain *Chain
+	goto_ bool
+}
+
+type Linux_Rules []*Linux_Rule
+func (rules *Linux_Rules) push(rule *Linux_Rule) {
+	*rules = append(*rules, rule)
+}
+
+func find_chains (acl_info ACL_Info, router_data Router_Data) {
+	exp_rules      := acl_info.rules
+	ip_net2obj := acl_info.ip_net2obj
+	prt2obj    := acl_info.prt2obj
+	prt_ip     := prt2obj["ip"]
+	prt_icmp   := prt2obj["icmp"]
+	prt_tcp    := prt2obj["tcp 1 65535"]
+	prt_udp    := prt2obj["udp 1 65535"]
+	network_00 := ip_net2obj["0.0.0.0/0"]
+
+	// For generating names of chains.
+	// Initialize if called first time.
+	if router_data.chain_counter ==  0 { router_data.chain_counter = 1 }
+
+	rules := make(Linux_Rules, len(exp_rules))
+	for i, exp_rule := range exp_rules {
+		var rule Linux_Rule
+		src_range := exp_rule.src_range
+		if src_range == nil {
+			proto := exp_rule.prt.proto
+
+			// Specify protocols tcp, udp, icmp in
+			// {src_range}, to get more efficient chains.
+			switch proto {
+			case "tcp": src_range = prt_tcp
+			case "udp": src_range = prt_udp
+			case "icmp": src_range = prt_icmp
+			default: src_range = prt_ip
+			}
+		}
+		rule.deny = exp_rule.deny
+		rule.src_range = src_range
+		rule.src, rule.dst, rule.prt = exp_rule.src, exp_rule.dst, exp_rule.prt
+		rules[i] = &rule
+	}
+
+
+//    my $print_tree;
+//    $print_tree = sub {
+//        my ($tree, $order, $depth) = @_;
+//        for my $name (keys %$tree) {
+//
+//            debug(' ' x $depth, $name);
+//            if ($depth < $#$order) {
+//                $print_tree->($tree->{$name}, $order, $depth + 1);
+//            }
+//        }
+//    };
+
+	subtree2bintree := make(map[*Lrule_tree]NP_bintree)
+	insert_bintree := func (tree *Lrule_tree) NP_bintree {
+		var elem1 interface{}
+		for key := range *tree {
+			elem1 = key
+			break
+		}
+		switch elem1.(type) {
+		case *IP_Net:
+			elements := make([]*IP_Net, 0, len(*tree))
+			for key := range *tree {
+				elements = append(elements, key.(*IP_Net))
+			}
+			
+			// Put prt/src/dst objects at the root of some subtree into a
+			// (binary) tree. This is used later to convert subsequent tests
+			// for ip/mask or port ranges into more efficient nested chains.
+			return gen_addr_bintree(elements, *tree, subtree2bintree)
+		case *Proto:
+			elements := make([]*Proto, 0, len(*tree))
+			for key := range *tree {
+				elements = append(elements, key.(*Proto))
+			}
+			return gen_prt_bintree(elements, *tree, subtree2bintree)
+		}
+		return nil
+	}
+
+	// Used by $merge_subtrees1 to find identical subtrees.
+	// Use hash for efficient lookup.
+	type lookup struct {
+		depth int
+		size int
+	}
+	depth2size2subtrees := make(map[lookup][]*Lrule_tree)
+
+	// Find and merge identical subtrees.
+	// Create bintree from subtree and store in subtree2bintree.
+	merge_subtrees1 := func (tree *Lrule_tree, depth int) {
+
+	SUBTREE:
+		for k, subtree := range *tree {
+			size := len(*subtree)
+			l := lookup{depth,size}
+
+			// Find subtree with identical keys and values;
+		FIND:
+			for _, subtree2 := range depth2size2subtrees[l] {
+				for key, val := range *subtree {
+					if val2, ok := (*subtree2)[key]; !ok || val2 != val {
+						continue FIND
+					}
+				}
+
+				// Substitute current subtree with identical subtree2
+				(*tree)[k] = subtree2
+				continue SUBTREE
+			}
+
+			// Found a new subtree.
+			depth2size2subtrees[l] = append(depth2size2subtrees[l], subtree)
+			bintree := insert_bintree(subtree)
+			subtree2bintree[subtree] = bintree
+		}
+	}
+
+	merge_subtrees := func (tree *Lrule_tree) NP_bintree {
+
+		// Process leaf nodes first.
+		for _, tree1 := range *tree {
+			for _, tree2 := range *tree1 {
+				merge_subtrees1(tree2, 2)
+			}
+		}
+
+		// Process nodes next to leaf nodes.
+		for _, tree1 := range *tree {
+			merge_subtrees1(tree1, 1)
+		}
+
+		// Process nodes next to root.
+		merge_subtrees1(tree, 0)
+		return insert_bintree(tree)
+	}
+
+	// Add new chain to current router.
+	new_chain := func (rules Linux_Rules) *Chain {
+		router_data.chain_counter++
+		chain := &Chain{
+			name:  fmt.Sprintf("c%d", router_data.chain_counter),
+			rules: rules,
+		}
+		router_data.chains = append(router_data.chains, chain)
+		return chain
+	}
+
+	get_seq := func (bintree NP_bintree) []NP_bintree {
+		seq := bintree.Seq()
+		var result []NP_bintree
+		if seq == nil {
+			if hi := bintree.Hi(); hi != nil {
+				result = append(result, hi)
+			}
+			if lo := bintree.Lo(); lo != nil {
+				result = append(result, lo)
+			}
+		} else {
+			result = make([]NP_bintree, len(seq))
+			for i,v := range(seq) {
+				result[i] = v
+			}
+		}
+		return result
+	}
+
+	cache := make(map[NP_bintree]Linux_Rules)
+
+	var gen_chain func (tree NP_bintree, order *Setters, depth int) Linux_Rules
+	gen_chain = func (tree NP_bintree, order *Setters, depth int) Linux_Rules {
+		setter := order[depth]
+		var new_rules Linux_Rules
+
+		// We need the original value later.
+		bintree := tree
+		for {
+			seq := get_seq(bintree)
+			subtree := bintree.Subtree()
+			if subtree != nil {
+/*
+              if($order->[$depth+1]&&
+                 $order->[$depth+1] =~ /^(src|dst)$/) {
+                  debug($order->[$depth+1]);
+                  debug_bintree($subtree);
+              }
+*/
+				rules := cache[subtree]
+				if rules == nil {
+					if depth + 1 >= len(order) {
+						rules = Linux_Rules{{deny: subtree != nil}}
+					} else {
+						rules = gen_chain(subtree, order, depth + 1)
+					}
+					if len(rules) > 1 && ! bintree.Noop() {
+						chain := new_chain(rules)
+						rules = Linux_Rules{{chain: chain, goto_: true }}
+					}
+					cache[subtree] = rules
+				}
+
+				// Don't use "goto", if some tests for sub-nodes of
+				// subtree are following.
+				if len(seq) != 0 || !bintree.Noop() {
+					for _, rule := range rules {
+						
+						// Create a copy of each rule because we must not change
+						// the original cached rules.
+						new_rule := *rule
+						if len(seq) != 0 { new_rule.goto_ = false }
+						if !bintree.Noop() { setter(&new_rule, bintree) }
+						new_rules = append(new_rules, &new_rule)
+					}
+				} else {
+					new_rules = append(new_rules, rules...)
+				}
+			}
+			if seq == nil { break }
+
+			// Take this value in next iteration.
+			bintree, seq = seq[0], seq[1:]
+
+			// Process remaining elements.
+			for _, node := range seq {
+				rules := gen_chain(node, order, depth)
+				new_rules = append(new_rules, rules...)
+			}
+		}
+		if len(new_rules) > 1 && !tree.Noop() {
+
+			// Generate new chain. All elements of @seq are
+			// known to be disjoint. If one element has matched
+			// and branched to a chain, then the other elements
+			// need not be tested again. This is implemented by
+			// calling the chain using '-g' instead of the usual '-j'.
+			chain := new_chain(new_rules)
+			new_rule := &Linux_Rule{ chain: chain, goto_: true }
+			setter(new_rule, tree)
+			return Linux_Rules{new_rule}
+		} else {
+			return new_rules
+		}
+	}
+
+	var getters Getters
+	getters[0] = func(rule *Linux_Rule) interface{} { return rule.src }
+	getters[1] = func(rule *Linux_Rule) interface{} { return rule.dst }
+	getters[2] = func(rule *Linux_Rule) interface{} { return rule.src_range }
+	getters[3] = func(rule *Linux_Rule) interface{} { return rule.prt }
+	var setters Setters
+	setters[0] = func(rule *Linux_Rule, val interface{}) {
+		rule.src = val.(*IP_Net) }
+	setters[1] = func(rule *Linux_Rule, val interface{}) {
+		rule.dst = val.(*IP_Net) }
+	setters[2] = func(rule *Linux_Rule, val interface{}) {
+		rule.src_range = val.(*Proto) }
+	setters[3] = func(rule *Linux_Rule, val interface{}) {
+		rule.prt = val.(*Proto) }
+
+	// Build rule trees. Generate and process separate tree for
+	// adjacent rules with same 'deny' attribute.
+	// Store rule tree together with order of attributes.
+	type tree_and_order = struct{
+		tree *Lrule_tree
+		order *Setters
+	}
+	var rule_sets []tree_and_order
+	if len(rules) > 0 {
+		prev_deny := rules[0].deny
+
+		// Add special rule as marker, that end of rules has been reached.
+		rules.push(&Linux_Rule{ src: nil })
+		var start int = 0
+		last := len(rules) - 1
+		var i int = 0
+		var count [4]map[interface{}]int
+		for i, _ := range count {
+			count[i] = make(map[interface{}]int)
+		}
+		for {
+			rule := rules[i]
+			deny := rule.deny
+			if deny == prev_deny && i < last {
+
+				// Count, which attribute has the largest number of
+				// different values.
+				for i, what := range getters {
+					count[i][what(rule)]++
+				}
+				i++
+			} else {
+
+				// Use key with smaller number of different values
+				// first in rule tree. This gives smaller tree and
+				// fewer tests in chains.
+				by_count := func (i, j int) bool {
+					return len(count[i]) < len(count[j])
+				}
+				get_order := getters
+				sort.Slice(get_order[:], by_count)
+				rule_tree := make(Lrule_tree)
+				for _, rule := range rules[start:i] {
+					key0 := getters[0](rule)
+					subtree0 := rule_tree[key0]
+					if subtree0 == nil {
+						m := make(Lrule_tree)
+						rule_tree[key0] = &m
+						subtree0 = &m
+					}
+					key1 := getters[1](rule)
+					subtree1 := (*subtree0)[key1]
+					if subtree1 == nil {
+						m := make(Lrule_tree)
+						(*subtree0)[key1] = &m
+						subtree1 = &m
+					}
+					key2 := getters[2](rule)
+					subtree2 := (*subtree1)[key2]
+					if subtree2 == nil {
+						m := make(Lrule_tree)
+						(*subtree1)[key2] = &m
+						subtree2 = &m
+					}
+					var coded_deny Lrule_tree
+					if rule.deny {
+						coded_deny = Lrule_tree{ true: nil }
+					}
+					(*subtree2)[getters[3](rule)] = &coded_deny
+				}
+				
+				// debug(join ', ', @test_order);
+				set_order := setters
+				sort.Slice(set_order[:], by_count)
+				rule_sets =
+					append(rule_sets, tree_and_order{ &rule_tree, &set_order})
+				
+				if i == last { break }
+				start = i
+				prev_deny = deny;
+			}
+		}
+		rules = nil
+	}
+
+	for i, set := range rule_sets {
+
+//    $print_tree->($tree, $order, 0);
+		bintree := merge_subtrees(set.tree)
+		result := gen_chain(bintree, set.order, 0)
+
+		// Goto must not be used in last rule of rule tree which is
+		// not the last tree.
+		if i < len(rule_sets)-1 {
+			rule := result[len(result)-1]
+			rule.goto_ = false
+		}
+
+		// Postprocess rules: Add missing attributes prt, src, dst
+		// with no-op values.
+		for _, rule := range result {
+			if rule.src == nil { rule.src = network_00 }
+			if rule.dst == nil { rule.dst = network_00 }
+			prt       := rule.prt
+			src_range := rule.src_range
+			if prt == nil && src_range == nil {
+				rule.prt = prt_ip
+			} else if prt == nil {
+				switch src_range.proto {
+					case "tcp":  rule.prt = prt_tcp
+					case "udp":  rule.prt = prt_udp
+					case "icmp": rule.prt = prt_icmp
+					default:     rule.prt = prt_ip
+            }
+			}
+		}
+		rules = append(rules, result...)
+	}
+	acl_info.lrules = rules
+}
+
+// Given an IP and mask, return its address
+// as "x.x.x.x/x" or "x.x.x.x" if prefix == 32 (128, if IPv6 option set).
+func prefix_code (ip_net *IP_Net) string {
+	size, bits := ip_net.net.Mask.Size()
+	if size == bits {
+		return ip_net.net.IP.String()
+	} else {
+		return ip_net.net.String()
+	}
+}
+
+func action_code (rule *Linux_Rule) (result string) {
+	if rule.chain != nil {
+		result = rule.chain.name
+	} else if rule.deny {
+		result = "droplog"
+	} else {
+		result = "ACCEPT"
+	}
+	return
+}
+
+// Print chains of iptables.
+// Objects have already been normalized to ip/mask pairs.
+// NAT has already been applied.
+func print_chains (router_data Router_Data) {
+	chains := router_data.chains
+	if len(chains) == 0 { return }
+
+	acl_info   := router_data.acls[0]
+	prt2obj    := acl_info.prt2obj
+	prt_ip     := prt2obj["ip"]
+	prt_icmp   := prt2obj["icmp"]
+	prt_tcp    := prt2obj["tcp 1 65535"]
+	prt_udp    := prt2obj["udp 1 65535"]
+
+	// Declare chain names.
+	for _, chain := range chains {
+		fmt.Printf(":%s -\n", chain.name)
+	}
+
+	// Define chains.
+	for _, chain := range chains {
+		prefix := fmt.Sprintf("-A %s", chain.name)
+		for _, rule := range chain.rules {
+			var jump string
+			if rule.goto_ {
+				jump = "-g"
+			} else {
+				jump = "-j"
+			}
+			result := fmt.Sprintf("%s %s", jump, action_code(rule))
+			if src := rule.src; src != nil {
+				if size, _ := src.net.Mask.Size(); size != 0 {
+					result += " -s " + prefix_code(src)
+				}
+			}
+			if dst := rule.dst; dst != nil {
+				if size, _ := dst.net.Mask.Size(); size != 0 {
+					result += " -d " + prefix_code(dst)
+				}
+			}
+		ADD_PROTO:
+			for {
+				src_range := rule.src_range
+				prt       := rule.prt
+				if src_range == nil && prt == nil {
+					break ADD_PROTO
+				}
+				if prt != nil && prt.proto == "ip" {
+					break ADD_PROTO
+				}
+				if prt == nil {
+					if src_range.proto == "IP" {
+						break ADD_PROTO
+					}
+					switch src_range.proto {
+					case "tcp": prt = prt_tcp
+					case "udp": prt = prt_udp
+					case "icmp": prt = prt_icmp
+					default: prt = prt_ip
+					}
+				}
+
+				// debug("c ",print_rule $rule) if not $src_range or not $prt;
+				result += " " + iptables_prt_code(src_range, prt)
+			}
+			fmt.Println(prefix, result)
+		}
+	}
+
+	// Empty line as delimiter.
+	fmt.Println();
+}
+
+func iptables_acl_line (rule *Linux_Rule, prefix string) {
+	src, dst, src_range, prt := rule.src, rule.dst, rule.src_range, rule.prt
+	var jump string
+	if rule.goto_ {
+		jump = "-g"
+	} else {
+		jump = "-j"
+	}
+	result := fmt.Sprintf("%s %s", jump, action_code(rule))
+	if size, _ := src.net.Mask.Size(); size != 0 {
+		result += " -s " + prefix_code(src)
+	}
+	if size, _ := dst.net.Mask.Size(); size != 0 {
+		result += " -d " + prefix_code(dst)
+	}
+	if prt.proto != "ip" {
+		result += " " + iptables_prt_code(src_range, prt)
+	}
+	fmt.Println(result)
+}
+
+func print_iptables_acl (acl_info *ACL_Info) {
+	name := acl_info.name
+	fmt.Printf(":%s -\n", name)
+	intf_prefix := fmt.Sprintf("-A %s", name)
+	for _, rule := range acl_info.lrules {
+		iptables_acl_line(rule, intf_prefix)
+	}
+}
 
 func convert_rule_objects (rules []*jRule, ip_net2obj Name2IP_Net, prt2obj Name2Proto) (Rules, bool) {
 	if rules == nil { return nil, false }
@@ -2043,6 +2176,8 @@ type Router_Data struct {
 	do_objectgroup bool
 	obj_groups_hash map[group_key][]*Obj_Group
 	obj_group_counter int
+	chain_counter int
+	chains []*Chain
 }
 
 func ip_net_list (names []string, ip_net2obj Name2IP_Net) ([]*IP_Net) {
@@ -2179,14 +2314,14 @@ func prepare_acls (path string) (router_data Router_Data) {
 			mark_supernets_of_need_protect(need_protect)
 		}
 		if model == "Linux" {
-//            add_tcp_udp_icmp(prt2obj);
+			add_tcp_udp_icmp(prt2obj);
 		}
         
 		setup_prt_relation(prt2obj);
 		acl_info.prt_ip = prt2obj["ip"]
         
 		if model == "Linux" {
-//			find_chains(acl_info, router_data);
+			find_chains(acl_info, router_data);
 		} else {
 			intf_rules = optimize_rules(intf_rules, acl_info)
 			intf_rules = join_ranges(intf_rules, prt2obj)
@@ -2410,13 +2545,11 @@ func print_acl (acl_info *ACL_Info, router_data Router_Data) {
 	if model == "Linux" {
 
 		// Print all sub-chains at once before first toplevel chain is printed.
-		/*
 		if router_data.chains != nil {
 			print_chains(router_data)
 			router_data.chains = nil
 		}
 		print_iptables_acl(acl_info)
-      */
 	} else {
 		if groups := acl_info.object_groups; groups != nil {
 			print_object_groups(groups, acl_info, model)
