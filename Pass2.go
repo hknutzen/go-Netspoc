@@ -1602,7 +1602,7 @@ func (tree *Prt_bintree) Seq() []*Prt_bintree { return tree.seq }
 func (tree *Prt_bintree) Subtree() NP_bintree { return tree.subtree }
 func (tree *Prt_bintree) Noop() bool { return tree.noop }
 
-type Getter func (rule *Linux_Rule) interface{}
+type Getter func (rule *Expanded_Rule) interface{}
 type Getters [4]Getter
 type Setter func (rule *Linux_Rule, val interface{})
 type Setters [4]Setter
@@ -1620,8 +1620,8 @@ type NP_bintree interface{
 
 type Linux_Rule struct {
 	deny bool
-	src, dst *IP_Net
-	prt, src_range	*Proto
+	src, dst *Net_bintree
+	prt, src_range	*Prt_bintree
 	chain *Chain
 	goto_ bool
 }
@@ -1632,7 +1632,7 @@ func (rules *Linux_Rules) push(rule *Linux_Rule) {
 }
 
 func find_chains (acl_info ACL_Info, router_data Router_Data) {
-	exp_rules      := acl_info.rules
+	rules      := acl_info.rules
 	ip_net2obj := acl_info.ip_net2obj
 	prt2obj    := acl_info.prt2obj
 	prt_ip     := prt2obj["ip"]
@@ -1645,26 +1645,19 @@ func find_chains (acl_info ACL_Info, router_data Router_Data) {
 	// Initialize if called first time.
 	if router_data.chain_counter ==  0 { router_data.chain_counter = 1 }
 
-	rules := make(Linux_Rules, len(exp_rules))
-	for i, exp_rule := range exp_rules {
-		var rule Linux_Rule
-		src_range := exp_rule.src_range
+	// Specify protocols tcp, udp, icmp in
+	// {src_range}, to get more efficient chains.
+	for _, rule := range rules {
+		src_range := rule.src_range
 		if src_range == nil {
-			proto := exp_rule.prt.proto
-
-			// Specify protocols tcp, udp, icmp in
-			// {src_range}, to get more efficient chains.
-			switch proto {
+			switch rule.prt.proto {
 			case "tcp": src_range = prt_tcp
 			case "udp": src_range = prt_udp
 			case "icmp": src_range = prt_icmp
 			default: src_range = prt_ip
 			}
 		}
-		rule.deny = exp_rule.deny
 		rule.src_range = src_range
-		rule.src, rule.dst, rule.prt = exp_rule.src, exp_rule.dst, exp_rule.prt
-		rules[i] = &rule
 	}
 
 
@@ -1680,7 +1673,14 @@ func find_chains (acl_info ACL_Info, router_data Router_Data) {
 //        }
 //    };
 
+	coded_Lpermit := &Lrule_tree{ false: nil }
+	coded_Ldeny := &Lrule_tree{ true: nil }
+	coded_Bpermit := &Net_bintree{ noop: false }
+	coded_Bdeny := &Net_bintree{ noop: true }
 	subtree2bintree := make(map[*Lrule_tree]NP_bintree)
+	subtree2bintree[coded_Ldeny] = coded_Bdeny
+	subtree2bintree[coded_Lpermit] = coded_Bpermit
+	
 	insert_bintree := func (tree *Lrule_tree) NP_bintree {
 		var elem1 interface{}
 		for key := range *tree {
@@ -1873,19 +1873,19 @@ func find_chains (acl_info ACL_Info, router_data Router_Data) {
 	}
 
 	var getters Getters
-	getters[0] = func(rule *Linux_Rule) interface{} { return rule.src }
-	getters[1] = func(rule *Linux_Rule) interface{} { return rule.dst }
-	getters[2] = func(rule *Linux_Rule) interface{} { return rule.src_range }
-	getters[3] = func(rule *Linux_Rule) interface{} { return rule.prt }
+	getters[0] = func(rule *Expanded_Rule) interface{} { return rule.src }
+	getters[1] = func(rule *Expanded_Rule) interface{} { return rule.dst }
+	getters[2] = func(rule *Expanded_Rule) interface{} { return rule.src_range }
+	getters[3] = func(rule *Expanded_Rule) interface{} { return rule.prt }
 	var setters Setters
 	setters[0] = func(rule *Linux_Rule, val interface{}) {
-		rule.src = val.(*IP_Net) }
+		rule.src = val.(*Net_bintree) }
 	setters[1] = func(rule *Linux_Rule, val interface{}) {
-		rule.dst = val.(*IP_Net) }
+		rule.dst = val.(*Net_bintree) }
 	setters[2] = func(rule *Linux_Rule, val interface{}) {
-		rule.src_range = val.(*Proto) }
+		rule.src_range = val.(*Prt_bintree) }
 	setters[3] = func(rule *Linux_Rule, val interface{}) {
-		rule.prt = val.(*Proto) }
+		rule.prt = val.(*Prt_bintree) }
 
 	// Build rule trees. Generate and process separate tree for
 	// adjacent rules with same 'deny' attribute.
@@ -1899,7 +1899,7 @@ func find_chains (acl_info ACL_Info, router_data Router_Data) {
 		prev_deny := rules[0].deny
 
 		// Add special rule as marker, that end of rules has been reached.
-		rules.push(&Linux_Rule{ src: nil })
+		rules.push(&Expanded_Rule{ src: nil })
 		var start int = 0
 		last := len(rules) - 1
 		var i int = 0
@@ -1951,11 +1951,12 @@ func find_chains (acl_info ACL_Info, router_data Router_Data) {
 						(*subtree1)[key2] = &m
 						subtree2 = &m
 					}
-					var coded_deny Lrule_tree
+					key3 := getters[3](rule)
 					if rule.deny {
-						coded_deny = Lrule_tree{ true: nil }
-					}
-					(*subtree2)[getters[3](rule)] = &coded_deny
+						(*subtree2)[key3] = coded_Ldeny
+					} else {
+						(*subtree2)[key3] = coded_Lpermit
+					}					
 				}
 				
 				// debug(join ', ', @test_order);
@@ -1972,6 +1973,7 @@ func find_chains (acl_info ACL_Info, router_data Router_Data) {
 		rules = nil
 	}
 
+	var lrules Linux_Rules
 	for i, set := range rule_sets {
 
 //    $print_tree->($tree, $order, 0);
@@ -1985,7 +1987,7 @@ func find_chains (acl_info ACL_Info, router_data Router_Data) {
 			rule.goto_ = false
 		}
 
-		// Postprocess rules: Add missing attributes prt, src, dst
+		// Postprocess lrules: Add missing attributes prt, src, dst
 		// with no-op values.
 		for _, rule := range result {
 			if rule.src == nil { rule.src = network_00 }
@@ -2003,9 +2005,9 @@ func find_chains (acl_info ACL_Info, router_data Router_Data) {
             }
 			}
 		}
-		rules = append(rules, result...)
+		lrules = append(lrules, result...)
 	}
-	acl_info.lrules = rules
+	acl_info.lrules = lrules
 }
 
 // Given an IP and mask, return its address
