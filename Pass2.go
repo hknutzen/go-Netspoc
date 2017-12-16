@@ -101,7 +101,7 @@ func create_ip_obj (ip_net string) (*IP_Net) {
 func get_ip_obj (ip net.IP, mask net.IPMask, ip_net2obj Name2IP_Net) (*IP_Net) {
 	prefix, _ := mask.Size()
 	name := fmt.Sprintf("%s/%d", ip.String(), prefix)
-	obj, ok := ip_net2obj[name];
+	obj, ok := ip_net2obj[name]
 	if !ok {
 		obj = &IP_Net{ net: &net.IPNet{ IP: ip, Mask: mask }, name: name }
 		ip_net2obj[name] = obj
@@ -276,7 +276,7 @@ func order_ranges (proto string, prt2obj Name2Proto, up *Proto) {
 					c := ranges[j]
 					c1 := c.ports[0]
 					if a2 + 1 != c1 { break }
-					c.has_neighbor = true;
+					c.has_neighbor = true
 					j++
 				}                    
 			}
@@ -318,7 +318,7 @@ func order_ranges (proto string, prt2obj Name2Proto, up *Proto) {
 		index = check_subrange(a, a1, a2, index)
 		if index == 0 { break }
     }
-    return;
+    return
 }
 
 func setup_prt_relation (prt2obj Name2Proto) {
@@ -351,8 +351,8 @@ func setup_prt_relation (prt2obj Name2Proto) {
 		}
 	}
 	
-	order_ranges("tcp", prt2obj, prt_ip);
-	order_ranges("udp", prt2obj, prt_ip);
+	order_ranges("tcp", prt2obj, prt_ip)
+	order_ranges("udp", prt2obj, prt_ip)
 
 	if tcp_establ, ok := prt2obj["tcp 1 65535 established"]; ok {
 		up, ok := prt2obj["tcp 1 65535"]
@@ -387,7 +387,7 @@ func optimize_redundant_rules (cmp_hash, chg_hash Rule_tree) bool {
 											for {
 												if cmp_hash, found := cmp_hash[dst]; found {
 													for prt, chg_rule := range chg_hash {
-														if chg_rule.deleted { continue; }
+														if chg_rule.deleted { continue }
 														for {
 															if cmp_rule, found := cmp_hash[prt]; found {
 																if cmp_rule != chg_rule &&
@@ -889,7 +889,7 @@ func find_objectgroups (acl_info *ACL_Info, router_data *Router_Data) {
 		// Find groups of rules with identical
 		// deny, src_range, prt, log, src/dst and different dst/src.
 		for _, rule := range rules {
-			deny      := rule.deny;
+			deny      := rule.deny
 			src_range := rule.src_range
 			prt       := rule.prt
 			log       := rule.log
@@ -929,7 +929,7 @@ func find_objectgroups (acl_info *ACL_Info, router_data *Router_Data) {
 			// and dst/src and shall be replaced by a single new
 			// rule referencing an object group.
 			for _, rule := range href {
-				group_glue[rule] = &glue;
+				group_glue[rule] = &glue
 			}
 		}
 			
@@ -1029,7 +1029,7 @@ func add_protect_rules (acl_info *ACL_Info, has_final_permit bool) {
 		}
 
 		if has_final_permit {
-			rules[i] = nil;
+			rules[i] = nil
 			deleted++
 		}
 	}
@@ -1150,19 +1150,21 @@ func iptables_prt_code (src_range_node, prt_node *Prt_bintree) string {
 
 
 // Handle iptables.
-
 /*
-sub debug_bintree {
-    my ($tree, $depth) = @_;
-    $depth ||= '';
-    my $ip      = bitstr($tree->{ip});
-    my $mask    = mask2prefix($tree->{mask});
-    my $subtree = $tree->{subtree} ? 'subtree' : '';
-
-    debug($depth, " $ip/$mask $subtree");
-    debug_bintree($tree->{lo}, "${depth}l") if $tree->{lo};
-    debug_bintree($tree->{hi}, "${depth}h") if $tree->{hi};
-    return;
+func debug_bintree (tree *Net_bintree, depth string) {
+	ip      := tree.net.IP.String()
+	len, _  := tree.net.Mask.Size()
+   var subtree string
+	if tree.subtree != nil {
+		subtree = "subtree";
+	}
+	info("%s %s/%d %s", depth, ip, len, subtree)
+	if lo := tree.lo; lo != nil {
+		debug_bintree(lo, depth + "l")
+	}
+	if hi := tree.hi; hi != nil {
+		debug_bintree(hi, depth + "r")
+	}
 }
 */
 
@@ -1223,7 +1225,7 @@ func add_bintree (tree *Net_bintree, node *Net_bintree) *Net_bintree {
 		// Create common root for tree and node.
 		for {
 			prefix--
-			tree_mask := net.CIDRMask(prefix, bits)
+			tree_mask = net.CIDRMask(prefix, bits)
 			if node_ip.Mask(tree_mask).Equal(tree_ip.Mask(tree_mask)) { break }
 		}
 		result = &Net_bintree{
@@ -1304,8 +1306,8 @@ func gen_addr_bintree(
 		bintree.noop = true
 	}
 
-	// debug_bintree($bintree);
-    return bintree;
+//	debug_bintree(bintree, "")
+	return bintree
 }
 
 func (tree *Net_bintree) Hi() NP_bintree {
@@ -1435,10 +1437,10 @@ PRT:
 			// Split array in two halves.
 			mid   := len(ports) / 2
 			left  := ports[:mid]
-			right := ports[mid + 1:]
+			right := ports[mid:]
 			return gen_rangetree(left), gen_rangetree(right)
 		}
-	};
+	}
 	gen_rangetree = func (prt_aref []*Proto) *Prt_bintree {
 		lo, hi := gen_lohitrees(prt_aref)
 		if nil == hi { return lo }
@@ -1453,7 +1455,9 @@ PRT:
 			
 			hilo := make([]*Prt_bintree, 0, 4)
 			for _, what := range []*Prt_bintree{lo.lo, lo.hi, hi.lo, hi.hi} {
-				if nil != what { _ = append(hilo, what) }
+				if what != nil {
+					hilo = append(hilo, what)
+				}
 			}
 			if len(hilo) <= 2 {
 
@@ -1546,10 +1550,8 @@ PRT:
 				seq3 := gen_icmp_type_code_sorted(aref2)
 
 				// Add a node 'icmp type any' as root.
-				prt := *aref2[0]
-				prt.type_ = 0
 				node2 = &Prt_bintree{
-                    Proto: prt,
+                    Proto: Proto{ proto: "icmp", type_: type_, code: -1 },
                     seq:   seq3,
 				}
 			} else {
@@ -1874,7 +1876,8 @@ func find_chains (acl_info *ACL_Info, router_data *Router_Data) {
 			if seq == nil { break }
 
 			// Take this value in next iteration.
-			bintree, seq = seq[0], seq[1:]
+			last := len(seq) - 1
+			bintree, seq = seq[last], seq[:last]
 
 			// Process remaining elements.
 			for _, node := range seq {
@@ -1899,19 +1902,19 @@ func find_chains (acl_info *ACL_Info, router_data *Router_Data) {
 	}
 
 	var getters Getters
-	getters[0] = func(rule *Expanded_Rule) interface{} { return rule.src }
+	getters[0] = func(rule *Expanded_Rule) interface{} { return rule.src_range }
 	getters[1] = func(rule *Expanded_Rule) interface{} { return rule.dst }
-	getters[2] = func(rule *Expanded_Rule) interface{} { return rule.src_range }
-	getters[3] = func(rule *Expanded_Rule) interface{} { return rule.prt }
+	getters[2] = func(rule *Expanded_Rule) interface{} { return rule.prt }
+	getters[3] = func(rule *Expanded_Rule) interface{} { return rule.src }
 	var setters Setters
 	setters[0] = func(rule *Linux_Rule, val interface{}) {
-		rule.src = val.(*Net_bintree) }
+		rule.src_range = val.(*Prt_bintree) }
 	setters[1] = func(rule *Linux_Rule, val interface{}) {
 		rule.dst = val.(*Net_bintree) }
 	setters[2] = func(rule *Linux_Rule, val interface{}) {
-		rule.src_range = val.(*Prt_bintree) }
-	setters[3] = func(rule *Linux_Rule, val interface{}) {
 		rule.prt = val.(*Prt_bintree) }
+	setters[3] = func(rule *Linux_Rule, val interface{}) {
+		rule.src = val.(*Net_bintree) }
 
 	// Build rule trees. Generate and process separate tree for
 	// adjacent rules with same 'deny' attribute.
@@ -1953,47 +1956,39 @@ func find_chains (acl_info *ACL_Info, router_data *Router_Data) {
 					return len(count[i]) < len(count[j])
 				}
 				get_order := getters
-				sort.Slice(get_order[:], by_count)
+				sort.SliceStable(get_order[:], by_count)
 				rule_tree := make(Lrule_tree)
 				for _, rule := range rules[start:i] {
-					key0 := getters[0](rule)
-					subtree0 := rule_tree[key0]
-					if subtree0 == nil {
-						m := make(Lrule_tree)
-						rule_tree[key0] = &m
-						subtree0 = &m
+					add := func(what int, tree *Lrule_tree) *Lrule_tree {
+						key := get_order[what](rule)
+						subtree := (*tree)[key]
+						if subtree == nil {
+							m := make(Lrule_tree)
+							(*tree)[key] = &m
+							subtree = &m
+						}
+						return subtree
 					}
-					key1 := getters[1](rule)
-					subtree1 := (*subtree0)[key1]
-					if subtree1 == nil {
-						m := make(Lrule_tree)
-						(*subtree0)[key1] = &m
-						subtree1 = &m
-					}
-					key2 := getters[2](rule)
-					subtree2 := (*subtree1)[key2]
-					if subtree2 == nil {
-						m := make(Lrule_tree)
-						(*subtree1)[key2] = &m
-						subtree2 = &m
-					}
-					key3 := getters[3](rule)
+					subtree := add(0, &rule_tree)
+					subtree = add(1, subtree)
+					subtree = add(2, subtree)
+					key3 := get_order[3](rule)
 					if rule.deny {
-						(*subtree2)[key3] = coded_Ldeny
+						(*subtree)[key3] = coded_Ldeny
 					} else {
-						(*subtree2)[key3] = coded_Lpermit
+						(*subtree)[key3] = coded_Lpermit
 					}					
 				}
 				
 				// debug(join ', ', @test_order);
 				set_order := setters
-				sort.Slice(set_order[:], by_count)
+				sort.SliceStable(set_order[:], by_count)
 				rule_sets =
 					append(rule_sets, tree_and_order{ &rule_tree, &set_order})
 				
 				if i == last { break }
 				start = i
-				prev_deny = deny;
+				prev_deny = deny
 			}
 		}
 		rules = nil
@@ -2130,7 +2125,7 @@ func print_chains (router_data *Router_Data) {
 	}
 
 	// Empty line as delimiter.
-	fmt.Println();
+	fmt.Println()
 }
 
 func iptables_acl_line (rule *Linux_Rule, prefix string) {
@@ -2216,7 +2211,7 @@ func ip_net_list (names []string, ip_net2obj Name2IP_Net) ([]*IP_Net) {
 	}
 	result := make([]*IP_Net, len(names))
 	for i, name := range names {
-		obj, ok := ip_net2obj[name];
+		obj, ok := ip_net2obj[name]
 		if !ok {
 			obj = create_ip_obj(name)
 			ip_net2obj[name] = obj
@@ -2232,7 +2227,7 @@ func prt_list (names []string, prt2obj Name2Proto) ([]*Proto) {
 	}
 	result := make([]*Proto, len(names))
 	for i, name := range names {
-		obj, ok := prt2obj[name];
+		obj, ok := prt2obj[name]
 		if !ok {
 			obj = create_prt_obj(name)
 			prt2obj[name] = obj
@@ -2345,14 +2340,14 @@ func prepare_acls (path string) (*Router_Data) {
 			mark_supernets_of_need_protect(need_protect)
 		}
 		if model == "Linux" {
-			add_tcp_udp_icmp(prt2obj);
+			add_tcp_udp_icmp(prt2obj)
 		}
         
-		setup_prt_relation(prt2obj);
+		setup_prt_relation(prt2obj)
 		acl_info.prt_ip = prt2obj["ip"]
         
 		if model == "Linux" {
-			find_chains(acl_info, router_data);
+			find_chains(acl_info, router_data)
 		} else {
 			intf_rules = optimize_rules(intf_rules, acl_info)
 			intf_rules = join_ranges(intf_rules, prt2obj)
@@ -2361,17 +2356,17 @@ func prepare_acls (path string) (*Router_Data) {
 			acl_info.intf_rules = move_rules_esp_ah(intf_rules, prt2obj, has_log1)
 			acl_info.rules = move_rules_esp_ah(rules, prt2obj, has_log2)
 
-			has_final_permit := check_final_permit(acl_info);
+			has_final_permit := check_final_permit(acl_info)
 			add_permit       := raw_info.Add_permit == 1
 			add_deny         := raw_info.Add_deny   == 1
 			add_protect_rules(acl_info, has_final_permit || add_permit)
 			if do_objectgroup && raw_info.Is_crypto_acl != 1 {
-				find_objectgroups(acl_info, router_data);
+				find_objectgroups(acl_info, router_data)
 			}
 			if filter_only != nil && !add_permit {
-				add_local_deny_rules(acl_info, router_data);
+				add_local_deny_rules(acl_info, router_data)
 			} else if !has_final_permit {
-				add_final_permit_deny_rule(acl_info, add_deny, add_permit);
+				add_final_permit_deny_rule(acl_info, add_deny, add_permit)
 			}
 		}
 	}
@@ -2407,11 +2402,11 @@ func cisco_acl_addr (obj *IP_Net, model string) string {
 			// Inverse mask bits.
 			// Must not inverse original mask, shared by multiple rules.
 			if model == "NX-OS" || model == "IOS" {
-				copy := make([]byte, len(mask));
+				copy := make([]byte, len(mask))
 				for i, byte := range mask {
 					copy[i] = ^byte
 				}
-				mask = copy;
+				mask = copy
 			}
 			mask_code := mask.String()
 			return ip_code + " " + mask_code
@@ -2598,7 +2593,7 @@ func print_combined (config []string, router_data *Router_Data, out_path string)
 	}
 	old := os.Stdout
 	defer func () { os.Stdout = old }()
-	os.Stdout = out_fd;
+	os.Stdout = out_fd
 
 	acl_hash := make(map[string]*ACL_Info)
 	for _, acl := range router_data.acls {
@@ -2616,7 +2611,7 @@ func print_combined (config []string, router_data *Router_Data, out_path string)
 			name := line[indexes[2] : indexes[3]]
 			acl_info, found := acl_hash[name]
 			if !found { fatal_err("Unexpected ACL %s", name) }
-			print_acl(acl_info, router_data);
+			print_acl(acl_info, router_data)
 		} else {
 			// Print unchanged config line.
 			fmt.Println(line)
@@ -2697,14 +2692,14 @@ func pass2_file (device_name, dir string, c chan bool) {
 
 func apply_concurrent (device_names_fh *os.File, dir, prev string) {
 
-	var generated, reused, errors int;
+	var generated, reused, errors int
 	concurrent := config.concurrent
 	c := make(chan bool, concurrent)
 	workers_left := concurrent
 
 	wait_and_check := func () {
 		if <-c {
-			generated++;
+			generated++
 		} else {
 			errors++
 		}
@@ -2746,10 +2741,10 @@ func apply_concurrent (device_names_fh *os.File, dir, prev string) {
 		fatal_err("Failed")
 	}
 	if generated > 0 {
-		info("Generated files for %d devices", generated);
+		info("Generated files for %d devices", generated)
 	}
 	if reused > 0 {
-		info("Reused %d files from previous run", reused);
+		info("Reused %d files from previous run", reused)
 	}
 }
 
@@ -2770,7 +2765,7 @@ func pass2 (dir string) {
 		}
 	}
 	
-	apply_concurrent(from_pass1, dir, prev);
+	apply_concurrent(from_pass1, dir, prev)
 	
 	// Remove directory '.prev' created by pass1
 	// or remove symlink '.prev' created by newpolicy.pl.
@@ -2782,7 +2777,7 @@ func pass2 (dir string) {
 
 func main() {
 	if (len(os.Args) != 2) {
-		fatal_err("Usage: %s DIR", os.Args[0]);
+		fatal_err("Usage: %s DIR", os.Args[0])
 	}
 	var dir = os.Args[1]
 	pass2(dir)
