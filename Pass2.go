@@ -68,7 +68,7 @@ func info (format string, args ...interface{}) {
 }
 
 func diag_msg (msg string) {
-	if show_diag {
+	if os.Getenv("SHOW_DIAG") != "" {
 		fmt.Fprintln(os.Stderr, "DIAG: " + msg)
 	}
 }
@@ -1579,7 +1579,7 @@ PRT:
 			}
 		} else if len(seq2) > 1 {
 			node = &Prt_bintree{
-				Proto: Proto{ proto: "icmp"},
+				Proto: Proto{ proto: "icmp", type_: -1, code: -1 },
 				seq:   seq2,
 			}
 		} else {
@@ -2796,4 +2796,5 @@ func main() {
 	}
 	var dir = os.Args[1]
 	pass2(dir)
+//	info("Finished");
 }
