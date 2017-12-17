@@ -51,7 +51,7 @@ var (
 	config = Config{concurrent: 2, pipe: false}
 )
 
-func to_sterr(format string, args ...interface{}) {
+func to_stderr(format string, args ...interface{}) {
 	fmt.Fprintf(os.Stderr, format, args...)
 	fmt.Fprintln(os.Stderr)
 }
@@ -1281,13 +1281,13 @@ func gen_addr_bintree(
 		}
 	}
 	
-	// Sort in reverse order by mask and then by IP.
+	// Sort by mask size and then by IP.
+	// I.e. large networks coming first.
 	sort.Slice(nodes, func(i, j int) bool {
 		switch bytes.Compare(
-			net.IP(nodes[i].net.Mask),
-			net.IP(nodes[j].net.Mask)) {
-			case -1: return false
-			case 1: return true
+			net.IP(nodes[i].net.Mask), net.IP(nodes[j].net.Mask)) {
+			case -1: return true
+			case 1: return false
 			}
 		return bytes.Compare(nodes[i].net.IP, nodes[j].net.IP) == 1
 	})
@@ -1634,10 +1634,12 @@ func (tree *Prt_bintree) Subtree() NP_bintree {
 }
 func (tree *Prt_bintree) Noop() bool { return tree.noop }
 
-type Getter func (rule *Expanded_Rule) interface{}
-type Getters [4]Getter
-type Setter func (rule *Linux_Rule, val interface{})
-type Setters [4]Setter
+type Order [4]struct {
+	count int
+	get func(*Expanded_Rule) interface{}
+	set func(*Linux_Rule, interface{})
+	name string
+}
 type Chain struct {
 	name string
 	rules Linux_Rules
@@ -1825,9 +1827,9 @@ func find_chains (acl_info *ACL_Info, router_data *Router_Data) {
 
 	cache := make(map[NP_bintree]Linux_Rules)
 
-	var gen_chain func (tree NP_bintree, order *Setters, depth int) Linux_Rules
-	gen_chain = func (tree NP_bintree, order *Setters, depth int) Linux_Rules {
-		setter := order[depth]
+	var gen_chain func (tree NP_bintree, order *Order, depth int) Linux_Rules
+	gen_chain = func (tree NP_bintree, order *Order, depth int) Linux_Rules {
+		setter := order[depth].set
 		var new_rules Linux_Rules
 
 		// We need the original value later.
@@ -1901,29 +1903,44 @@ func find_chains (acl_info *ACL_Info, router_data *Router_Data) {
 		}
 	}
 
-	var getters Getters
-	getters[0] = func(rule *Expanded_Rule) interface{} { return rule.src_range }
-	getters[1] = func(rule *Expanded_Rule) interface{} { return rule.dst }
-	getters[2] = func(rule *Expanded_Rule) interface{} { return rule.prt }
-	getters[3] = func(rule *Expanded_Rule) interface{} { return rule.src }
-	var setters Setters
-	setters[0] = func(rule *Linux_Rule, val interface{}) {
-		rule.src_range = val.(*Prt_bintree) }
-	setters[1] = func(rule *Linux_Rule, val interface{}) {
-		rule.dst = val.(*Net_bintree) }
-	setters[2] = func(rule *Linux_Rule, val interface{}) {
-		rule.prt = val.(*Prt_bintree) }
-	setters[3] = func(rule *Linux_Rule, val interface{}) {
-		rule.src = val.(*Net_bintree) }
-
 	// Build rule trees. Generate and process separate tree for
 	// adjacent rules with same 'deny' attribute.
 	// Store rule tree together with order of attributes.
 	type tree_and_order = struct{
 		tree *Lrule_tree
-		order *Setters
+		order *Order
 	}
 	var rule_sets []tree_and_order
+	var count [4]map[interface{}]int
+	for i, _ := range count {
+		count[i] = make(map[interface{}]int)
+	}
+	order := Order{
+		{
+			get: func(rule *Expanded_Rule) interface{} { return rule.src_range },
+			set: func(rule *Linux_Rule, val interface{}) {
+				rule.src_range = val.(*Prt_bintree) },
+			name: "src_range",
+		},
+		{
+			get: func(rule *Expanded_Rule) interface{} { return rule.dst },
+			set: func(rule *Linux_Rule, val interface{}) {
+				rule.dst = val.(*Net_bintree) },
+			name: "dst",
+		},
+		{
+			get: func(rule *Expanded_Rule) interface{} { return rule.prt },
+			set: func(rule *Linux_Rule, val interface{}) {
+				rule.prt = val.(*Prt_bintree) },
+			name: "prt",
+		},
+		{
+			get: func(rule *Expanded_Rule) interface{} { return rule.src },
+			set: func(rule *Linux_Rule, val interface{}) {
+				rule.src = val.(*Net_bintree) },
+			name: "src",
+		},
+	}
 	if len(rules) > 0 {
 		prev_deny := rules[0].deny
 
@@ -1932,10 +1949,6 @@ func find_chains (acl_info *ACL_Info, router_data *Router_Data) {
 		var start int = 0
 		last := len(rules) - 1
 		var i int = 0
-		var count [4]map[interface{}]int
-		for i, _ := range count {
-			count[i] = make(map[interface{}]int)
-		}
 		for {
 			rule := rules[i]
 			deny := rule.deny
@@ -1943,24 +1956,28 @@ func find_chains (acl_info *ACL_Info, router_data *Router_Data) {
 
 				// Count, which attribute has the largest number of
 				// different values.
-				for i, what := range getters {
-					count[i][what(rule)]++
+				for i, what := range order {
+					count[i][what.get(rule)]++
 				}
 				i++
 			} else {
+				for i, attr_map := range count {
+					order[i].count = len(attr_map)
 
+					// Reset counter for next tree.
+					count[i] = make(map[interface{}]int)
+				}
+					
 				// Use key with smaller number of different values
 				// first in rule tree. This gives smaller tree and
 				// fewer tests in chains.
-				by_count := func (i, j int) bool {
-					return len(count[i]) < len(count[j])
-				}
-				get_order := getters
-				sort.SliceStable(get_order[:], by_count)
+				sort.SliceStable(order[:], func (i, j int) bool {
+					return order[i].count < order[j].count
+				})
 				rule_tree := make(Lrule_tree)
 				for _, rule := range rules[start:i] {
 					add := func(what int, tree *Lrule_tree) *Lrule_tree {
-						key := get_order[what](rule)
+						key := order[what].get(rule)
 						subtree := (*tree)[key]
 						if subtree == nil {
 							m := make(Lrule_tree)
@@ -1972,20 +1989,18 @@ func find_chains (acl_info *ACL_Info, router_data *Router_Data) {
 					subtree := add(0, &rule_tree)
 					subtree = add(1, subtree)
 					subtree = add(2, subtree)
-					key3 := get_order[3](rule)
+					key3 := order[3].get(rule)
 					if rule.deny {
 						(*subtree)[key3] = coded_Ldeny
 					} else {
 						(*subtree)[key3] = coded_Lpermit
 					}					
 				}
-				
-				// debug(join ', ', @test_order);
-				set_order := setters
-				sort.SliceStable(set_order[:], by_count)
-				rule_sets =
-					append(rule_sets, tree_and_order{ &rule_tree, &set_order})
-				
+
+				//for _, what := range order {
+				//   to_stderr(what.name)
+				//}
+				rule_sets = append(rule_sets, tree_and_order{&rule_tree, &order})
 				if i == last { break }
 				start = i
 				prev_deny = deny
