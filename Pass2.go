@@ -1434,8 +1434,8 @@ PRT:
 				return ports[i].ports[0] < ports[j].ports[0]
 			})
 
-			// Split array in two halves.
-			mid   := len(ports) / 2
+			// Split array in two halves (prefer larger left part).
+			mid   := (len(ports) - 1) / 2 + 1
 			left  := ports[:mid]
 			right := ports[mid:]
 			return gen_rangetree(left), gen_rangetree(right)
