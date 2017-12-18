@@ -42,13 +42,18 @@ import (
 type Config struct {
 	concurrent int
 	pipe bool
+	verbose bool
 }
 
 var (
 	zero_ip = net.ParseIP("0.0.0.0")
 	max_ip  = net.ParseIP("255.255.255.255")
 	show_diag = false
-	config = Config{concurrent: 2, pipe: false}
+	config = Config{
+		concurrent: 8,
+		pipe: false,
+		verbose: false,
+	}
 )
 
 func to_stderr(format string, args ...interface{}) {
@@ -63,8 +68,10 @@ func fatal_err (format string, args ...interface{}) {
 }
 
 func info (format string, args ...interface{}) {
-	string := fmt.Sprintf(format, args...)
-	fmt.Fprintln(os.Stderr, string)
+	if config.verbose {
+		string := fmt.Sprintf(format, args...)
+		fmt.Fprintln(os.Stderr, string)
+	}
 }
 
 func diag_msg (msg string) {
@@ -2789,5 +2796,5 @@ func main() {
 	}
 	var dir = os.Args[1]
 	pass2(dir)
-//	info("Finished");
+	info("Finished");
 }
