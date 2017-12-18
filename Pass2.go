@@ -120,15 +120,16 @@ func create_prt_obj (descr string) (*Proto) {
 	splice := strings.Split(descr, " ")
 	proto := splice[0]
 	prt := Proto{ proto: proto, name: descr }
-    
-	if proto == "tcp" || proto == "udp" {
+
+	switch proto {
+	case "tcp", "udp":
 		p1, _ := strconv.Atoi(splice[1])
 		p2, _ := strconv.Atoi(splice[2])
 		prt.ports = [...]int{ p1, p2 }
 		if len(splice) > 3 {
 			 prt.established = true
 		}
-	} else if proto == "icmp" {
+	case "icmp":
 		if len(splice) > 1 {
 			prt.type_, _ = strconv.Atoi(splice[1])
 			if len(splice) > 2 {
@@ -1113,7 +1114,8 @@ func iptables_prt_code (src_range_node, prt_node *Prt_bintree) string {
 	prt := &prt_node.Proto
 	proto := prt.proto
 	result := "-p " + proto
-	if proto == "tcp" || proto == "udp" {
+	switch proto {
+	case "tcp", "udp":
 		port_code := func (range_obj *Proto) string {
 			ports := range_obj.ports
 			v1, v2 := ports[0], ports[1]
@@ -1138,7 +1140,7 @@ func iptables_prt_code (src_range_node, prt_node *Prt_bintree) string {
 			result += " --dport " + dport
 		}
 		return result
-	} else if proto == "icmp" {
+	case "icmp":
 		type_ := prt.type_
 		if type_ != -1 {
 			code := prt.code
@@ -1150,7 +1152,7 @@ func iptables_prt_code (src_range_node, prt_node *Prt_bintree) string {
 		} else {
 			return result
 		}
-	} else {
+	default:
 		return result
 	}
 }
@@ -2464,10 +2466,11 @@ func print_object_groups (fd *os.File, groups []*Obj_Group, acl_info *ACL_Info, 
 // permit <val1> <src> <val2> <dst> <val3>
 func cisco_prt_code (src_range, prt *Proto) (t1, t2, t3 string) {
 	proto := prt.proto
-	
-	if proto == "ip" {
+
+	switch proto {
+	case "ip":
         return "ip", "", ""
-	} else if proto == "tcp" || proto == "udp" {
+	case "tcp", "udp":
 		port_code := func (range_obj *Proto) string {
 			ports := range_obj.ports
 			v1, v2 := ports[0], ports[1]
@@ -2496,7 +2499,7 @@ func cisco_prt_code (src_range, prt *Proto) (t1, t2, t3 string) {
 			src_prt = port_code(src_range)
 		}
 		return proto, src_prt, dst_prt
-	} else if proto == "icmp" {
+	case "icmp":
 		type_ := prt.type_
 		if type_ != -1 {
 			code := prt.code
@@ -2508,7 +2511,7 @@ func cisco_prt_code (src_range, prt *Proto) (t1, t2, t3 string) {
 		} else {
 			return proto, "", ""
 		}
-	} else {
+	default:
 		return proto, "", ""
 	}
 }
@@ -2549,11 +2552,12 @@ func print_cisco_acl (fd *os.File, acl_info *ACL_Info, router_data *Router_Data)
 	name := acl_info.name
 	numbered := int(10)
 	var prefix string
-	if model == "IOS" {
+	switch model {
+	case "IOS":
 		fmt.Fprintln(fd, "ip access-list extended", name)
-	} else if model == "NX-OS" {
+	case "NX-OS":
 		fmt.Fprintln(fd, "ip access-list", name)
-	} else if model == "ASA" || model == "ACE" {
+	case "ASA", "ACE":
 		prefix = "access-list " + name + " extended"
 	}
 
