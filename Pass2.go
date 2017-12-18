@@ -207,7 +207,7 @@ func setup_ip_net_relation (ip_net2obj Name2IP_Net) {
 		for _, network := range mask_ip_hash[string(mask)] {
 			up := network.up
 			if up == nil { continue }
-			if opt_networks := up.opt_networks; nil != opt_networks {
+			if opt_networks := up.opt_networks; opt_networks != nil {
 				network.opt_networks = opt_networks
 			}
 		}
@@ -463,7 +463,7 @@ func optimize_rules (rules Rules, acl_info *ACL_Info) Rules {
 	// Add rule to rule tree.
 	add_rule := func (rule_tree Rule_tree, rule *Expanded_Rule) {
 		src_range := rule.src_range
-		if nil == src_range {
+		if src_range == nil {
 			src_range = prt_ip
 		}
 	
@@ -499,10 +499,10 @@ func optimize_rules (rules Rules, acl_info *ACL_Info) Rules {
 		if rule.dst.no_opt_addrs { continue }
 
 		// Replace obj by supernet.
-		if nil != rule.src.opt_networks {
+		if rule.src.opt_networks != nil {
 			rule.src = rule.src.opt_networks
 		}
-		if nil != rule.dst.opt_networks && !rule.dst.need_protect {
+		if rule.dst.opt_networks != nil && !rule.dst.need_protect {
 			rule.dst = rule.dst.opt_networks
 		}
 
@@ -512,7 +512,7 @@ func optimize_rules (rules Rules, acl_info *ACL_Info) Rules {
 		add_rule(secondary_tree, rule)
 	}
 
-	if 0 != len(secondary_tree) {
+	if len(secondary_tree) != 0 {
 		changed =
 			optimize_redundant_rules(secondary_tree, secondary_tree) || changed
 		changed =
@@ -683,7 +683,7 @@ func move_rules_esp_ah (rules Rules, prt2obj Name2Proto, has_log bool) Rules {
 	for _, rule := range rules {
 		if rule.deny {
 			deny_rules.push(rule)
-		} else if rule.prt == prt_esp || rule.prt == prt_ah || "" !=rule.log {
+		} else if rule.prt == prt_esp || rule.prt == prt_ah || rule.log != "" {
 			crypto_rules.push(rule)
 		} else {
 			permit_rules.push(rule)
@@ -714,7 +714,7 @@ func move_rules_esp_ah (rules Rules, prt2obj Name2Proto, has_log bool) Rules {
 		case -1: return true
 		case 1: return false
 		}
-		return -1 == bytes.Compare(net.IP(d_a.net.Mask), net.IP(d_b.net.Mask))
+		return bytes.Compare(net.IP(d_a.net.Mask), net.IP(d_b.net.Mask)) == -1
 	})
 	return append(deny_rules, append(crypto_rules, permit_rules...)...)
 }
@@ -747,9 +747,9 @@ func add_local_deny_rules (acl_info *ACL_Info, router_data *Router_Data) {
 	
 	if router_data.do_objectgroup {
 		group_or_single := func (obj_list []*IP_Net) *IP_Net {
-			if 1 == len(obj_list) {
+			if len(obj_list) == 1 {
 				return obj_list[0]
-			} else if nil != router_data.filter_only_group {
+			} else if router_data.filter_only_group != nil {
 
 				// Reuse object-group at all interfaces.
 				return router_data.filter_only_group
@@ -953,7 +953,7 @@ func find_objectgroups (acl_info *ACL_Info, router_data *Router_Data) {
 
 			// If all elements have been combined into one single network,
 			// don't create a group, but take single element as result.
-			if 1 == size {
+			if size == 1 {
 				return elements[0]
 			}
 			
@@ -1129,12 +1129,12 @@ func iptables_prt_code (src_range_node, prt_node *Prt_bintree) string {
 				return fmt.Sprint(v1, ":", v2)
 			}
 		}
-		if nil != src_range_node {
-			if sport := port_code(&src_range_node.Proto); "" != sport {
+		if src_range_node != nil {
+			if sport := port_code(&src_range_node.Proto); sport != "" {
 				result += " --sport " + sport
 			}
 		}
-		if dport := port_code(prt); "" != dport {
+		if dport := port_code(prt); dport != "" {
 			result += " --dport " + dport
 		}
 		return result
@@ -1211,7 +1211,7 @@ func add_bintree (tree *Net_bintree, node *Net_bintree) *Net_bintree {
       // ToDo:
       // If this optimization had been done before merge_subtrees,
       // it could have merged more subtrees.
-		if nil == tree.subtree || nil == node.subtree ||
+		if tree.subtree == nil || node.subtree == nil ||
 			tree.subtree != node.subtree {
 			mask := net.CIDRMask(prefix + 1, bits)
 			var hilo **Net_bintree
@@ -1220,7 +1220,7 @@ func add_bintree (tree *Net_bintree, node *Net_bintree) *Net_bintree {
 			} else {
 				hilo = &tree.hi
 			}
-			if nil != *hilo {
+			if *hilo != nil {
 				*hilo = add_bintree(*hilo, node)
 			} else {
 				*hilo = node
@@ -1248,16 +1248,16 @@ func add_bintree (tree *Net_bintree, node *Net_bintree) *Net_bintree {
 
 	// Merge adjacent sub-networks.
 	for {
-		if nil != result.subtree { break }
+		if result.subtree != nil { break }
 		lo, hi := result.lo, result.hi
-      if nil == lo || nil == result.hi { break }
+      if lo == nil || result.hi == nil { break }
 		prefix, _ := result.net.Mask.Size()
 		prefix++
 		if lo_prefix, _ := lo.net.Mask.Size(); prefix != lo_prefix { break }
 		if hi_prefix, _ := hi.net.Mask.Size(); prefix != hi_prefix { break }
-		if nil == lo.subtree || nil == hi.subtree { break }
+		if lo.subtree == nil || hi.subtree == nil { break }
 		if lo.subtree != hi.subtree { break }
-		if nil != lo.lo || nil != lo.hi || nil != hi.lo || nil != hi.hi { break }
+		if lo.lo != nil || lo.hi != nil || hi.lo != nil || hi.hi != nil { break }
 
 //    debug('Merged: ', print_ip $lo->{ip},' ',
 //          print_ip $hi->{ip},'/',print_ip $hi->{mask});
@@ -1309,7 +1309,7 @@ func gen_addr_bintree(
 
 	// Add attribute {noop} to node which doesn't add any test to
 	// generated rule.
-	if prefix, _ := bintree.net.Mask.Size(); 0 == prefix {
+	if prefix, _ := bintree.net.Mask.Size(); prefix == 0 {
 		bintree.noop = true
 	}
 
@@ -1386,7 +1386,7 @@ PRT:
 		// Check if prt is sub protocol of any other protocol of
 		// current set. But handle direct sub protocols of 'ip' as top
 		// protocols.
-		for up := prt.up; nil != up.up; up = up.up {
+		for up := prt.up; up.up != nil; up = up.up {
 			if subtree, ok := tree[up]; ok {
 
 				// Found sub protocol of current set.
@@ -1450,7 +1450,7 @@ PRT:
 	}
 	gen_rangetree = func (prt_aref []*Proto) *Prt_bintree {
 		lo, hi := gen_lohitrees(prt_aref)
-		if nil == hi { return lo }
+		if hi == nil { return lo }
 
       // Take low port from lower tree and high port from high tree.
 		prt := *prt_aref[0]
@@ -1458,7 +1458,7 @@ PRT:
 
 		// Merge adjacent port ranges.
 		if lo.ports[1] + 1 == hi.ports[0] &&
-			nil != lo.subtree && nil != hi.subtree && lo.subtree == hi.subtree {
+			lo.subtree != nil && hi.subtree != nil && lo.subtree == hi.subtree {
 			
 			hilo := make([]*Prt_bintree, 0, 4)
 			for _, what := range []*Prt_bintree{lo.lo, lo.hi, hi.lo, hi.hi} {
@@ -1509,7 +1509,7 @@ PRT:
 
 		// If one protocol is 'icmp any' it is the only top protocol,
 		// all other icmp protocols are sub protocols.
-		if -1 == icmp_aref[0].type_ {
+		if icmp_aref[0].type_ == -1 {
 			icmp_any  = icmp_aref[0]
 			icmp_aref = sub_prt[icmp_any]
 		}
@@ -2492,7 +2492,7 @@ func cisco_prt_code (src_range, prt *Proto) (t1, t2, t3 string) {
 			}
 		}
 		var src_prt string
-		if nil != src_range {
+		if src_range != nil {
 			src_prt = port_code(src_range)
 		}
 		return proto, src_prt, dst_prt
