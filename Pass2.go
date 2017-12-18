@@ -2071,7 +2071,7 @@ func action_code (rule *Linux_Rule) (result string) {
 // Print chains of iptables.
 // Objects have already been normalized to ip/mask pairs.
 // NAT has already been applied.
-func print_chains (router_data *Router_Data) {
+func print_chains (fd *os.File, router_data *Router_Data) {
 	chains := router_data.chains
 	if len(chains) == 0 { return }
 
@@ -2084,7 +2084,7 @@ func print_chains (router_data *Router_Data) {
 
 	// Declare chain names.
 	for _, chain := range chains {
-		fmt.Printf(":%s -\n", chain.name)
+		fmt.Fprintf(fd, ":%s -\n", chain.name)
 	}
 
 	// Define chains.
@@ -2135,15 +2135,15 @@ func print_chains (router_data *Router_Data) {
 				result += " " + iptables_prt_code(src_range, prt)
 				break
 			}
-			fmt.Println(prefix, result)
+			fmt.Fprintln(fd, prefix, result)
 		}
 	}
 
 	// Empty line as delimiter.
-	fmt.Println()
+	fmt.Fprintln(fd)
 }
 
-func iptables_acl_line (rule *Linux_Rule, prefix string) {
+func iptables_acl_line (fd *os.File, rule *Linux_Rule, prefix string) {
 	src, dst, src_range, prt := rule.src, rule.dst, rule.src_range, rule.prt
 	var jump string
 	if rule.goto_ {
@@ -2161,15 +2161,15 @@ func iptables_acl_line (rule *Linux_Rule, prefix string) {
 	if prt.proto != "ip" {
 		result += " " + iptables_prt_code(src_range, prt)
 	}
-	fmt.Println(result)
+	fmt.Fprintln(fd, result)
 }
 
-func print_iptables_acl (acl_info *ACL_Info) {
+func print_iptables_acl (fd *os.File, acl_info *ACL_Info) {
 	name := acl_info.name
-	fmt.Printf(":%s -\n", name)
+	fmt.Fprintf(fd, ":%s -\n", name)
 	intf_prefix := fmt.Sprintf("-A %s", name)
 	for _, rule := range acl_info.lrules {
-		iptables_acl_line(rule, intf_prefix)
+		iptables_acl_line(fd, rule, intf_prefix)
 	}
 }
 
@@ -2429,7 +2429,7 @@ func cisco_acl_addr (obj *IP_Net, model string) string {
 	}
 }
 
-func print_object_groups (groups []*Obj_Group, acl_info *ACL_Info, model string) {
+func print_object_groups (fd *os.File, groups []*Obj_Group, acl_info *ACL_Info, model string) {
 	var keyword string
 	if model == "NX-OS" {
 		keyword = "object-group ip address"
@@ -2438,16 +2438,16 @@ func print_object_groups (groups []*Obj_Group, acl_info *ACL_Info, model string)
 	}
 	for _, group := range groups {
 		numbered := 10
-		fmt.Println(keyword, group.name)
+		fmt.Fprintln(fd, keyword, group.name)
 		for _, element := range group.elements {
 			adr := cisco_acl_addr(element, model)
 			if model == "NX-OS" {
-				fmt.Println("", numbered, adr)
+				fmt.Fprintln(fd, "", numbered, adr)
 				numbered += 10
 			} else if (model == "ACE") {
-				fmt.Println("", adr)
+				fmt.Fprintln(fd, "", adr)
 			} else {
-				fmt.Println(" network-object", adr)
+				fmt.Fprintln(fd, " network-object", adr)
 			}
 		}
 	}
@@ -2516,10 +2516,11 @@ func get_cisco_action (deny bool) string {
 	return action
 }
 
-func print_asa_std_acl (acl_info *ACL_Info, model string) {
+func print_asa_std_acl (fd *os.File, acl_info *ACL_Info, model string) {
 	rules := acl_info.rules
 	for _, rule := range rules {
-		fmt.Println(
+		fmt.Fprintln(
+			fd,
 			"access-list",
 			acl_info.name,
 			"standard",
@@ -2528,11 +2529,11 @@ func print_asa_std_acl (acl_info *ACL_Info, model string) {
 	}
 }
 
-func print_cisco_acl (acl_info *ACL_Info, router_data *Router_Data) {
+func print_cisco_acl (fd *os.File, acl_info *ACL_Info, router_data *Router_Data) {
 	model := router_data.model
 
 	if acl_info.is_std_acl {
-		print_asa_std_acl(acl_info, model)
+		print_asa_std_acl(fd, acl_info, model)
 		return
 	}
 
@@ -2542,9 +2543,9 @@ func print_cisco_acl (acl_info *ACL_Info, router_data *Router_Data) {
 	numbered := int(10)
 	var prefix string
 	if model == "IOS" {
-		fmt.Println("ip access-list extended", name)
+		fmt.Fprintln(fd, "ip access-list extended", name)
 	} else if model == "NX-OS" {
-		fmt.Println("ip access-list", name)
+		fmt.Fprintln(fd, "ip access-list", name)
 	} else if model == "ASA" || model == "ACE" {
 		prefix = "access-list " + name + " extended"
 	}
@@ -2575,41 +2576,35 @@ func print_cisco_acl (acl_info *ACL_Info, router_data *Router_Data) {
 				result = fmt.Sprintf(" %d%s", numbered, result)
             numbered += 10
 			}
-			fmt.Println(result)
+			fmt.Fprintln(fd, result)
 		}
 	}
 }
 
-func print_acl (acl_info *ACL_Info, router_data *Router_Data) {
+func print_acl (fd *os.File, acl_info *ACL_Info, router_data *Router_Data) {
 	model := router_data.model
 
 	if model == "Linux" {
 
 		// Print all sub-chains at once before first toplevel chain is printed.
 		if router_data.chains != nil {
-			print_chains(router_data)
+			print_chains(fd, router_data)
 			router_data.chains = nil
 		}
-		print_iptables_acl(acl_info)
+		print_iptables_acl(fd, acl_info)
 	} else {
 		if groups := acl_info.object_groups; groups != nil {
-			print_object_groups(groups, acl_info, model)
+			print_object_groups(fd, groups, acl_info, model)
 		}
-		print_cisco_acl(acl_info, router_data)
+		print_cisco_acl(fd, acl_info, router_data)
 	}
 }
 
 func print_combined (config []string, router_data *Router_Data, out_path string) {
-
-	// Redirect print statements to out_path.
-	out_fd, err := os.Create(out_path)
+	fd, err := os.Create(out_path)
 	if err != nil {
 		fatal_err("Can't open %s for writing: %v", out_path, err)
 	}
-	old := os.Stdout
-	defer func () { os.Stdout = old }()
-	os.Stdout = out_fd
-
 	acl_hash := make(map[string]*ACL_Info)
 	for _, acl := range router_data.acls {
 		acl_hash[acl.name] = acl
@@ -2626,14 +2621,14 @@ func print_combined (config []string, router_data *Router_Data, out_path string)
 			name := line[indexes[2] : indexes[3]]
 			acl_info, found := acl_hash[name]
 			if !found { fatal_err("Unexpected ACL %s", name) }
-			print_acl(acl_info, router_data)
+			print_acl(fd, acl_info, router_data)
 		} else {
 			// Print unchanged config line.
-			fmt.Println(line)
+			fmt.Fprintln(fd, line)
 		}
     }   
 
-	if err := out_fd.Close(); err != nil {
+	if err := fd.Close(); err != nil {
 		fatal_err("Can't close %s: %v", out_path, err)
 	}
 }
@@ -2693,21 +2688,21 @@ func read_file_lines (filename string) []string {
 }
 
 func pass2_file (device_name, dir string, c chan bool) {
-//	success := false
+	success := false
 
 	// Send ok on success
-//	defer func () { c <- success }()
+	defer func () { c <- success }()
 
 	file := dir + "/" + device_name
 	router_data := prepare_acls(file + ".rules")
 	config := read_file_lines(file + ".config")
 	print_combined(config, router_data, file)
-//	success = true
+	success = true
 }
 
 func apply_concurrent (device_names_fh *os.File, dir, prev string) {
 
-	var generated, reused, errors int
+	var started, generated, reused, errors int
 	concurrent := config.concurrent
 	c := make(chan bool, concurrent)
 	workers_left := concurrent
@@ -2718,6 +2713,7 @@ func apply_concurrent (device_names_fh *os.File, dir, prev string) {
 		} else {
 			errors++
 		}
+		started--
 	}
 		
 	// Read to be processed files line by line.
@@ -2727,26 +2723,23 @@ func apply_concurrent (device_names_fh *os.File, dir, prev string) {
 
 		if try_prev(device_name, dir, prev) {
 			reused++
-		} else if 0 < workers_left {
+		} else if workers_left > 0 {
 			// Start concurrent jobs at beginning.
-			/*
 			go pass2_file(device_name, dir, c)
 			workers_left--
-         */
-			pass2_file(device_name, dir, c)
+			started++
 		} else {
 			// Start next job, after some job has finished.
 			wait_and_check()
 			go pass2_file(device_name, dir, c)
+			started++
 		}
 	}
 	
 	// Wait for all jobs to be finished.
-	/*
-	for 0 < len(c) {
+	for started > 0 {
 		wait_and_check()
 	}
-   */
 
 	if err := scanner.Err(); err != nil {
 		fatal_err("While reading device names: %v", err)
