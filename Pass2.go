@@ -738,7 +738,7 @@ func move_rules_esp_ah(rules Rules, prt2obj Name2Proto, has_log bool) Rules {
 		if val := bytes.Compare(a.net.IP, b.net.IP); val != 0 {
 			return val
 		}
-		return bytes.Compare(net.IP(a.net.Mask), net.IP(b.net.Mask))
+		return bytes.Compare(a.net.Mask, b.net.Mask)
 	}
 	sort.Slice(crypto_rules, func(i, j int) bool {
 		switch strings.Compare(
@@ -1376,8 +1376,7 @@ func gen_addr_bintree(
 	// Sort by mask size and then by IP.
 	// I.e. large networks coming first.
 	sort.Slice(nodes, func(i, j int) bool {
-		switch bytes.Compare(
-			net.IP(nodes[i].net.Mask), net.IP(nodes[j].net.Mask)) {
+		switch bytes.Compare(nodes[i].net.Mask, nodes[j].net.Mask) {
 		case -1:
 			return true
 		case 1:
