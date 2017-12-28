@@ -734,6 +734,12 @@ func move_rules_esp_ah(rules Rules, prt2obj Name2Proto, has_log bool) Rules {
 	}
 
 	// Sort crypto rules.
+	cmp_addr := func(a, b *IP_Net) int {
+		if val := bytes.Compare(a.net.IP, b.net.IP); val != 0 {
+			return val
+		}
+		return bytes.Compare(net.IP(a.net.Mask), net.IP(b.net.Mask))
+	}
 	sort.Slice(crypto_rules, func(i, j int) bool {
 		switch strings.Compare(
 			crypto_rules[i].prt.proto,
@@ -743,29 +749,13 @@ func move_rules_esp_ah(rules Rules, prt2obj Name2Proto, has_log bool) Rules {
 		case 1:
 			return false
 		}
-		s_a := crypto_rules[i].src
-		s_b := crypto_rules[j].src
-		switch bytes.Compare(s_a.net.IP, s_b.net.IP) {
+		switch cmp_addr(crypto_rules[i].src, crypto_rules[j].src) {
 		case -1:
 			return true
 		case 1:
 			return false
 		}
-		switch bytes.Compare(net.IP(s_a.net.Mask), net.IP(s_b.net.Mask)) {
-		case -1:
-			return true
-		case 1:
-			return false
-		}
-		d_a := crypto_rules[i].dst
-		d_b := crypto_rules[j].dst
-		switch bytes.Compare(d_a.net.IP, d_b.net.IP) {
-		case -1:
-			return true
-		case 1:
-			return false
-		}
-		return bytes.Compare(net.IP(d_a.net.Mask), net.IP(d_b.net.Mask)) == -1
+		return cmp_addr(crypto_rules[i].dst, crypto_rules[j].dst) == -1
 	})
 	return append(deny_rules, append(crypto_rules, permit_rules...)...)
 }
