@@ -610,12 +610,9 @@ func join_ranges(rules Rules, prt2obj Name2Proto) Rules {
 		sort.Slice(sorted, func(i, j int) bool {
 			return sorted[i].prt.ports[0] < sorted[j].prt.ports[0]
 		})
-		i := 0
-		rule_a := sorted[i]
+		rule_a := sorted[0]
 		a1, a2 := rule_a.prt.ports[0], rule_a.prt.ports[1]
-		i++
-		for ; i < len(sorted); i++ {
-			rule_b := sorted[i]
+		for _, rule_b := range sorted[1:] {
 			b1, b2 := rule_b.prt.ports[0], rule_b.prt.ports[1]
 
 			// Found adjacent port ranges.
