@@ -334,8 +334,7 @@ func order_ranges(proto string, prt2obj Name2Proto, up *Proto) {
 		a.up = up
 		ports := a.ports
 		a1, a2 := ports[0], ports[1]
-		index++
-		index = check_subrange(a, a1, a2, index)
+		index = check_subrange(a, a1, a2, index+1)
 		if index == 0 {
 			break
 		}
