@@ -846,7 +846,7 @@ func combine_adjacent_ip_mask(hash map[*IP_Net]*Expanded_Rule, ip_net2obj Name2I
 		case 1:
 			return false
 		}
-		return bytes.Compare(elements[i].net.Mask, elements[j].net.Mask) < 0
+		return bytes.Compare(elements[i].net.Mask, elements[j].net.Mask) == -1
 	})
 
 	// Find left and rigth part with identical mask and combine them
