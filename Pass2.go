@@ -287,15 +287,11 @@ func order_ranges(proto string, prt2obj Name2Proto, up *Proto) {
 				b.has_neighbor = true
 
 				// Mark other ranges having identical start port.
-				j := i + 1
-				for j < len(ranges) {
-					c := ranges[j]
-					c1 := c.ports[0]
-					if a2+1 != c1 {
+				for _, c := range ranges[i+1:] {
+					if c.ports[0] != b1 {
 						break
 					}
 					c.has_neighbor = true
-					j++
 				}
 			}
 
