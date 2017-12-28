@@ -840,11 +840,10 @@ func combine_adjacent_ip_mask(hash map[*IP_Net]*Expanded_Rule, ip_net2obj Name2I
 		elements = append(elements, element)
 	}
 	sort.Slice(elements, func(i, j int) bool {
-		cmp := bytes.Compare(elements[i].net.IP, elements[j].net.IP)
-		if cmp < 0 {
+		switch bytes.Compare(elements[i].net.IP, elements[j].net.IP) {
+		case -1:
 			return true
-		}
-		if cmp > 0 {
+		case 1:
 			return false
 		}
 		return bytes.Compare(elements[i].net.Mask, elements[j].net.Mask) < 0
