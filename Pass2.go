@@ -2194,6 +2194,7 @@ func action_code(rule *Linux_Rule) (result string) {
 // NAT has already been applied.
 func print_chains(fd *os.File, router_data *Router_Data) {
 	chains := router_data.chains
+	router_data.chains = nil
 	if len(chains) == 0 {
 		return
 	}
@@ -2549,7 +2550,11 @@ func cisco_acl_addr(obj *IP_Net, model string) string {
 	}
 }
 
-func print_object_groups(fd *os.File, groups []*Obj_Group, acl_info *ACL_Info, model string) {
+func print_object_groups(fd *os.File, acl_info *ACL_Info, model string) {
+	groups := acl_info.object_groups
+	if len(groups) == 0 {
+		return
+	}
 	var keyword string
 	if model == "NX-OS" {
 		keyword = "object-group ip address"
@@ -2655,11 +2660,9 @@ func print_cisco_acl(fd *os.File, acl_info *ACL_Info, router_data *Router_Data) 
 		return
 	}
 
-	intf_rules := acl_info.intf_rules
-	rules := acl_info.rules
 	name := acl_info.name
-	numbered := int(10)
-	var prefix string
+	numbered := 10
+	prefix := ""
 	switch model {
 	case "IOS":
 		fmt.Fprintln(fd, "ip access-list extended", name)
@@ -2669,7 +2672,7 @@ func print_cisco_acl(fd *os.File, acl_info *ACL_Info, router_data *Router_Data) 
 		prefix = "access-list " + name + " extended"
 	}
 
-	for _, rules := range []Rules{intf_rules, rules} {
+	for _, rules := range []Rules{acl_info.intf_rules, acl_info.rules} {
 		for _, rule := range rules {
 			action := get_cisco_action(rule.deny)
 			proto_code, src_port_code, dst_port_code :=
@@ -2702,19 +2705,13 @@ func print_cisco_acl(fd *os.File, acl_info *ACL_Info, router_data *Router_Data) 
 
 func print_acl(fd *os.File, acl_info *ACL_Info, router_data *Router_Data) {
 	model := router_data.model
-
 	if model == "Linux" {
 
 		// Print all sub-chains at once before first toplevel chain is printed.
-		if router_data.chains != nil {
-			print_chains(fd, router_data)
-			router_data.chains = nil
-		}
+		print_chains(fd, router_data)
 		print_iptables_acl(fd, acl_info)
 	} else {
-		if groups := acl_info.object_groups; groups != nil {
-			print_object_groups(fd, groups, acl_info, model)
-		}
+		print_object_groups(fd, acl_info, model)
 		print_cisco_acl(fd, acl_info, router_data)
 	}
 }
