@@ -2314,9 +2314,7 @@ func convert_rule_objects(rules []*jRule, ip_net2obj Name2IP_Net, prt2obj Name2P
 		if rule.Src_range != "" {
 			src_range = prt(rule.Src_range, prt2obj)
 		}
-		if rule.Log != "" {
-			has_log = true
-		}
+		has_log = has_log || rule.Log != ""
 		for _, src := range src_list {
 			for _, dst := range dst_list {
 				for _, prt := range prt_list {
@@ -2350,31 +2348,12 @@ type Router_Data struct {
 }
 
 func ip_net_list(names []string, ip_net2obj Name2IP_Net) []*IP_Net {
-	if names == nil {
-		return nil
-	}
 	result := make([]*IP_Net, len(names))
 	for i, name := range names {
 		obj, ok := ip_net2obj[name]
 		if !ok {
 			obj = create_ip_obj(name)
 			ip_net2obj[name] = obj
-		}
-		result[i] = obj
-	}
-	return result
-}
-
-func prt_list(names []string, prt2obj Name2Proto) []*Proto {
-	if names == nil {
-		return nil
-	}
-	result := make([]*Proto, len(names))
-	for i, name := range names {
-		obj, ok := prt2obj[name]
-		if !ok {
-			obj = create_prt_obj(name)
-			prt2obj[name] = obj
 		}
 		result[i] = obj
 	}
@@ -2388,6 +2367,14 @@ func prt(name string, prt2obj Name2Proto) *Proto {
 		prt2obj[name] = obj
 	}
 	return obj
+}
+
+func prt_list(names []string, prt2obj Name2Proto) []*Proto {
+	result := make([]*Proto, len(names))
+	for i, name := range names {
+		result[i] = prt(name, prt2obj)
+	}
+	return result
 }
 
 //go:generate easyjson Pass2.go
@@ -2484,7 +2471,7 @@ func prepare_acls(path string) *Router_Data {
 		}
 		acls[i] = acl_info
 
-		if need_protect != nil {
+		if len(need_protect) > 0 {
 			mark_supernets_of_need_protect(need_protect)
 		}
 		if model == "Linux" {
@@ -2511,7 +2498,7 @@ func prepare_acls(path string) *Router_Data {
 			if do_objectgroup && raw_info.Is_crypto_acl != 1 {
 				find_objectgroups(acl_info, router_data)
 			}
-			if filter_only != nil && !add_permit {
+			if len(filter_only) > 0 && !add_permit {
 				add_local_deny_rules(acl_info, router_data)
 			} else if !has_final_permit {
 				add_final_permit_deny_rule(acl_info, add_deny, add_permit)
