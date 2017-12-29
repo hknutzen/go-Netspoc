@@ -2636,8 +2636,7 @@ func get_cisco_action(deny bool) string {
 }
 
 func print_asa_std_acl(fd *os.File, acl_info *ACL_Info, model string) {
-	rules := acl_info.rules
-	for _, rule := range rules {
+	for _, rule := range acl_info.rules {
 		fmt.Fprintln(
 			fd,
 			"access-list",
