@@ -1106,7 +1106,7 @@ func add_protect_rules(acl_info *ACL_Info, has_final_permit bool) {
 		new_rules := make(Rules, 0, len(rules)-deleted)
 		for _, rule := range rules {
 			if rule != nil {
-				new_rules = append(new_rules, rule)
+				new_rules.push(rule)
 			}
 		}
 		acl_info.intf_rules = new_rules
