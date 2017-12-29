@@ -2628,13 +2628,11 @@ func cisco_prt_code(src_range, prt *Proto) (t1, t2, t3 string) {
 }
 
 func get_cisco_action(deny bool) string {
-	var action string
 	if deny {
-		action = "deny"
+		return "deny"
 	} else {
-		action = "permit"
+		return "permit"
 	}
-	return action
 }
 
 func print_asa_std_acl(fd *os.File, acl_info *ACL_Info, model string) {
