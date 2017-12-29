@@ -1115,16 +1115,14 @@ func add_protect_rules(acl_info *ACL_Info, has_final_permit bool) {
 	// Deny rule is needless if there is no such permit rule.
 	// Try to optimize this case.
 	protect_map := make(map[*IP_Net]bool)
-	rules = acl_info.rules
-	for _, rule := range rules {
+	for _, rule := range acl_info.rules {
 		if rule.deny {
 			continue
 		}
 		if rule.prt.established {
 			continue
 		}
-		dst := rule.dst
-		hash := dst.is_supernet_of_need_protect
+		hash := rule.dst.is_supernet_of_need_protect
 		if hash == nil {
 			continue
 		}
