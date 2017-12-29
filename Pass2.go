@@ -1007,9 +1007,9 @@ func find_objectgroups(acl_info *ACL_Info, router_data *Router_Data) {
 				return elements[0]
 			}
 
-			// Use size and first element as keys for efficient hashing.
+			// Use size and first element as keys for efficient lookup.
 			// Name of element is used, because elements are regenerated
-			// between pricessing of different ACLs.
+			// between processing of different ACLs.
 			first := elements[0]
 			key := group_key{size, first.name}
 
