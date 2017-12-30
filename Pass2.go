@@ -43,16 +43,16 @@ type Config struct {
 	concurrent int
 	pipe       bool
 	verbose    bool
+	ipv6       bool
 }
 
 var (
-	zero_ip   = net.ParseIP("0.0.0.0")
-	max_ip    = net.ParseIP("255.255.255.255")
 	show_diag = false
 	config    = Config{
 		concurrent: 8,
 		pipe:       false,
 		verbose:    false,
+		ipv6:       false,
 	}
 )
 
@@ -156,9 +156,20 @@ func (s ByMask) Less(i, j int) bool {
 	return bytes.Compare(s[i], s[j]) < 0
 }
 
+func get_net00_addr() string {
+	var result string
+	if config.ipv6 {
+		result = "::/0"
+	} else {
+		result = "0.0.0.0/0"
+	}
+	return result
+}
+	
 func setup_ip_net_relation(ip_net2obj Name2IP_Net) {
-	if _, ok := ip_net2obj["0.0.0.0/0"]; !ok {
-		ip_net2obj["0.0.0.0/0"] = create_ip_obj("0.0.0.0/0")
+	net00 := get_net00_addr()
+	if _, ok := ip_net2obj[net00]; !ok {
+		ip_net2obj[net00] = create_ip_obj(net00)
 	}
 	mask_ip_hash := make(map[string]map[string]*IP_Net)
 
@@ -1759,13 +1770,12 @@ func (rules *Linux_Rules) push(rule *Linux_Rule) {
 
 func find_chains(acl_info *ACL_Info, router_data *Router_Data) {
 	rules := acl_info.rules
-	ip_net2obj := acl_info.ip_net2obj
 	prt2obj := acl_info.prt2obj
 	prt_ip := prt2obj["ip"]
 	prt_icmp := prt2obj["icmp"]
 	prt_tcp := prt2obj["tcp 1 65535"]
 	prt_udp := prt2obj["udp 1 65535"]
-	network_00 := ip_net2obj["0.0.0.0/0"]
+	network_00 := acl_info.network_00
 
 	// Specify protocols tcp, udp, icmp in
 	// {src_range}, to get more efficient chains.
@@ -2462,7 +2472,7 @@ func prepare_acls(path string) *Router_Data {
 			no_opt_addrs:   no_opt_addrs,
 			filter_any_src: raw_info.Filter_any_src == 1,
 			need_protect:   need_protect,
-			network_00:     ip_net2obj["0.0.0.0/0"],
+			network_00:     ip_net2obj[get_net00_addr()],
 		}
 		acls[i] = acl_info
 
@@ -2518,16 +2528,18 @@ func cisco_acl_addr(obj *IP_Net, model string) string {
 		return keyword + " " + obj.name
 	}
 
-	ip, mask := obj.net.IP, net.IP(obj.net.Mask)
-	if mask.Equal(zero_ip) {
+	prefix, bits := obj.net.Mask.Size()
+	if prefix == 0 {
 		return "any"
 	} else if model == "NX-OS" {
 		return obj.name
 	} else {
+		ip := obj.net.IP
 		ip_code := ip.String()
-		if mask.Equal(max_ip) {
+		if prefix == bits {
 			return "host " + ip_code
 		} else {
+			mask := net.IP(obj.net.Mask)
 
 			// Inverse mask bits.
 			// Must not inverse original mask, shared by multiple rules.
