@@ -574,7 +574,7 @@ func join_ranges(rules Rules, prt2obj Name2Proto) Rules {
 		log, proto string
 	}
 	changed := false
-	rule_tree := make(map[key]Rules)
+	key2rules := make(map[key]Rules)
 	for _, rule := range rules {
 
 		// Only ranges which have a neighbor may be successfully optimized.
@@ -582,25 +582,22 @@ func join_ranges(rules Rules, prt2obj Name2Proto) Rules {
 		if !rule.prt.has_neighbor {
 			continue
 		}
-
+		
+		// Collect rules with identical deny/src/dst/src_range log values
+		// and identical TCP or UDP protocol.
 		k := key{
 			rule.deny, rule.src, rule.dst, rule.src_range, rule.log,
 			rule.prt.proto,
 		}
-		rule_tree[k] = append(rule_tree[k], rule)
+		key2rules[k] = append(key2rules[k], rule)
 	}
 
 	rule2range := make(map[*Expanded_Rule][2]int)
 	rule2del := make(map[*Expanded_Rule]bool)
-	for _, sorted := range rule_tree {
-
-		// Nothing to do if only a single rule.
+	for _, sorted := range key2rules {
 		if len(sorted) < 2 {
 			continue
 		}
-
-		// Values of rules are rules with identical
-		// deny/src/dst/src_range/log/TCP or UDP protocol type.
 
 		// When sorting these rules by low port number, rules with
 		// adjacent protocols will placed side by side. There can't be
@@ -648,7 +645,7 @@ func join_ranges(rules Rules, prt2obj Name2Proto) Rules {
 				continue
 			}
 
-			// Process rules with joined port ranges.
+			// Process rule with joined port ranges.
 			if ports, ok := rule2range[rule]; ok {
 				proto := rule.prt.proto
 				key := fmt.Sprintf("%s %d %d", proto, ports[0], ports[1])
@@ -660,12 +657,9 @@ func join_ranges(rules Rules, prt2obj Name2Proto) Rules {
 					new_prt = &Proto{proto: proto, ports: ports}
 					prt2obj[key] = new_prt
 				}
-				new_rule := *rule
-				new_rule.prt = new_prt
-				new_rules.push(&new_rule)
-			} else {
-				new_rules.push(rule)
+				rule.prt = new_prt
 			}
+			new_rules.push(rule)
 		}
 		rules = new_rules
 	}
@@ -2565,12 +2559,16 @@ func print_object_groups(fd *os.File, acl_info *ACL_Info, model string) {
 		numbered := 10
 		fmt.Fprintln(fd, keyword, group.name)
 		for _, element := range group.elements {
+
+			// Reject network with mask = 0 in group.
+			// This occurs if optimization didn't work correctly.
+			if size, _ := element.net.Mask.Size(); size == 0 {
+				fatal_err("Unexpected network with mask 0 in object-group")
+			}
 			adr := cisco_acl_addr(element, model)
 			if model == "NX-OS" {
 				fmt.Fprintln(fd, "", numbered, adr)
 				numbered += 10
-			} else if model == "ACE" {
-				fmt.Fprintln(fd, "", adr)
 			} else {
 				fmt.Fprintln(fd, " network-object", adr)
 			}
@@ -2668,7 +2666,7 @@ func print_cisco_acl(fd *os.File, acl_info *ACL_Info, router_data *Router_Data) 
 		fmt.Fprintln(fd, "ip access-list extended", name)
 	case "NX-OS":
 		fmt.Fprintln(fd, "ip access-list", name)
-	case "ASA", "ACE":
+	case "ASA":
 		prefix = "access-list " + name + " extended"
 	}
 
