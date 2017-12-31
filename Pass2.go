@@ -1321,39 +1321,33 @@ func add_bintree(tree *Net_bintree, node *Net_bintree) *Net_bintree {
 	}
 
 	// Merge adjacent sub-networks.
-	for {
-		if result.subtree != nil {
-			break
-		}
+	if result.subtree == nil {
 		lo, hi := result.lo, result.hi
-		if lo == nil || result.hi == nil {
-			break
+		if lo == nil || hi == nil {
+			goto NO_MERGE
 		}
 		prefix, _ := result.net.Mask.Size()
 		prefix++
 		if lo_prefix, _ := lo.net.Mask.Size(); prefix != lo_prefix {
-			break
+			goto NO_MERGE
 		}
 		if hi_prefix, _ := hi.net.Mask.Size(); prefix != hi_prefix {
-			break
+			goto NO_MERGE
 		}
 		if lo.subtree == nil || hi.subtree == nil {
-			break
+			goto NO_MERGE
 		}
 		if lo.subtree != hi.subtree {
-			break
+			goto NO_MERGE
 		}
 		if lo.lo != nil || lo.hi != nil || hi.lo != nil || hi.hi != nil {
-			break
+			goto NO_MERGE
 		}
-
-		//    debug('Merged: ', print_ip $lo->{ip},' ',
-		//          print_ip $hi->{ip},'/',print_ip $hi->{mask});
 		result.subtree = lo.subtree
 		result.lo = nil
 		result.hi = nil
-		break
 	}
+	NO_MERGE:
 	return result
 }
 
