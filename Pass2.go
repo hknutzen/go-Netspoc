@@ -347,10 +347,9 @@ func order_ranges(proto string, prt2obj Name2Proto, up *Proto) {
 		a1, a2 := ports[0], ports[1]
 		index = check_subrange(a, a1, a2, index+1)
 		if index == 0 {
-			break
+			return
 		}
 	}
-	return
 }
 
 func setup_prt_relation(prt2obj Name2Proto) {
