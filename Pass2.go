@@ -2236,36 +2236,31 @@ func print_chains(fd *os.File, router_data *Router_Data) {
 					result += " -d " + prefix_code(&dst.IP_Net)
 				}
 			}
-		ADD_PROTO:
-			for {
-				src_range := rule.src_range
-				prt := rule.prt
-				if src_range == nil && prt == nil {
-					break ADD_PROTO
+			src_range := rule.src_range
+			prt := rule.prt
+			switch {
+			case src_range == nil && prt == nil:
+				// break
+			case prt != nil && prt.Proto.proto == "ip":
+				// break
+			case  prt == nil:
+				if src_range.Proto.proto == "ip" {
+					break 
 				}
-				if prt != nil && prt.Proto.proto == "ip" {
-					break ADD_PROTO
+				prt = new(Prt_bintree)
+				switch src_range.Proto.proto {
+				case "tcp":
+					prt.Proto = *prt_tcp
+				case "udp":
+					prt.Proto = *prt_udp
+				case "icmp":
+					prt.Proto = *prt_icmp
+				default:
+					prt.Proto = *prt_ip
 				}
-				if prt == nil {
-					if src_range.Proto.proto == "ip" {
-						break ADD_PROTO
-					}
-					prt = new(Prt_bintree)
-					switch src_range.Proto.proto {
-					case "tcp":
-						prt.Proto = *prt_tcp
-					case "udp":
-						prt.Proto = *prt_udp
-					case "icmp":
-						prt.Proto = *prt_icmp
-					default:
-						prt.Proto = *prt_ip
-					}
-				}
-
-				// debug("c ",print_rule $rule) if not $src_range or not $prt;
+				fallthrough
+			default:
 				result += " " + iptables_prt_code(src_range, prt)
-				break
 			}
 			fmt.Fprintln(fd, prefix, result)
 		}
