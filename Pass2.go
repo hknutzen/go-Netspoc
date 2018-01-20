@@ -467,9 +467,24 @@ func optimize_redundant_rules(cmp_hash, chg_hash Rule_tree) bool {
 	return changed
 }
 
+type Rule struct {
+	deny           bool
+	src, dst       *IP_Net
+	prt, src_range *Proto
+	log            string
+	deleted        bool
+	opt_secondary  bool
+}
+
+type Rules []*Rule
+
+func (rules *Rules) push(rule *Rule) {
+	*rules = append(*rules, rule)
+}
+
 // Build rule tree from nested maps.
 // Leaf nodes have rules as values.
-type Rule_tree1 map[*Proto]*Expanded_Rule
+type Rule_tree1 map[*Proto]*Rule
 type Rule_tree2 map[*IP_Net]Rule_tree1
 type Rule_tree3 map[*IP_Net]Rule_tree2
 type Rule_tree4 map[*Proto]Rule_tree3
@@ -497,7 +512,7 @@ func optimize_rules(rules Rules, acl_info *ACL_Info) Rules {
 	changed := false
 
 	// Add rule to rule tree.
-	add_rule := func(rule_tree Rule_tree, rule *Expanded_Rule) {
+	add_rule := func(rule_tree Rule_tree, rule *Rule) {
 		src_range := rule.src_range
 		if src_range == nil {
 			src_range = prt_ip
@@ -602,8 +617,8 @@ func join_ranges(rules Rules, prt2obj Name2Proto) Rules {
 		key2rules[k] = append(key2rules[k], rule)
 	}
 
-	rule2range := make(map[*Expanded_Rule][2]int)
-	rule2del := make(map[*Expanded_Rule]bool)
+	rule2range := make(map[*Rule][2]int)
+	rule2del := make(map[*Rule]bool)
 	for _, sorted := range key2rules {
 		if len(sorted) < 2 {
 			continue
@@ -676,15 +691,6 @@ func join_ranges(rules Rules, prt2obj Name2Proto) Rules {
 	return rules
 }
 
-type Expanded_Rule struct {
-	deny           bool
-	src, dst       *IP_Net
-	prt, src_range *Proto
-	log            string
-	deleted        bool
-	opt_secondary  bool
-}
-
 type ACL_Info struct {
 	name                                                  string
 	is_std_acl                                            bool
@@ -697,12 +703,6 @@ type ACL_Info struct {
 	network_00                                            *IP_Net
 	prt_ip                                                *Proto
 	object_groups                                         []*Obj_Group
-}
-
-type Rules []*Expanded_Rule
-
-func (rules *Rules) push(rule *Expanded_Rule) {
-	*rules = append(*rules, rule)
 }
 
 // Place those rules first in Cisco ACL that have
@@ -805,7 +805,7 @@ func add_local_deny_rules(acl_info *ACL_Info, router_data *Router_Data) {
 			}
 		}
 		acl_info.rules.push(
-			&Expanded_Rule{
+			&Rule{
 				deny: true,
 				src:  group_or_single(src_networks),
 				dst:  group_or_single(filter_only),
@@ -815,12 +815,12 @@ func add_local_deny_rules(acl_info *ACL_Info, router_data *Router_Data) {
 		for _, src := range src_networks {
 			for _, dst := range filter_only {
 				acl_info.rules.push(
-					&Expanded_Rule{deny: true, src: src, dst: dst, prt: prt_ip})
+					&Rule{deny: true, src: src, dst: dst, prt: prt_ip})
 			}
 		}
 	}
 	acl_info.rules.push(
-		&Expanded_Rule{src: network_00, dst: network_00, prt: prt_ip})
+		&Rule{src: network_00, dst: network_00, prt: prt_ip})
 }
 
 /*
@@ -835,7 +835,7 @@ func add_local_deny_rules(acl_info *ACL_Info, router_data *Router_Data) {
               IP/mask objects.
               Parameter $hash is changed to reflect combined IP/mask objects.
 */
-func combine_adjacent_ip_mask(hash map[*IP_Net]*Expanded_Rule, ip_net2obj Name2IP_Net) []*IP_Net {
+func combine_adjacent_ip_mask(hash map[*IP_Net]*Rule, ip_net2obj Name2IP_Net) []*IP_Net {
 
 	// Take objects from keys of map.
 	// Sort by mask. Adjacent networks will be adjacent elements then.
@@ -943,7 +943,7 @@ func find_objectgroups(acl_info *ACL_Info, router_data *Router_Data) {
 			src_range, prt *Proto
 			log            string
 		}
-		group_rule_tree := make(map[key]map[*IP_Net]*Expanded_Rule)
+		group_rule_tree := make(map[key]map[*IP_Net]*Rule)
 
 		// Find groups of rules with identical
 		// deny, src_range, prt, log, src/dst and different dst/src.
@@ -960,7 +960,7 @@ func find_objectgroups(acl_info *ACL_Info, router_data *Router_Data) {
 			k := key{deny, that, src_range, prt, log}
 			href, ok := group_rule_tree[k]
 			if !ok {
-				href = make(map[*IP_Net]*Expanded_Rule)
+				href = make(map[*IP_Net]*Rule)
 				group_rule_tree[k] = href
 			}
 			href[this] = rule
@@ -974,9 +974,9 @@ func find_objectgroups(acl_info *ACL_Info, router_data *Router_Data) {
 			active bool
 
 			// object-key => rule, ...
-			hash map[*IP_Net]*Expanded_Rule
+			hash map[*IP_Net]*Rule
 		}
-		group_glue := make(map[*Expanded_Rule]*glue_type)
+		group_glue := make(map[*Rule]*glue_type)
 		for _, href := range group_rule_tree {
 
 			// href is {dst/src => rule, ...}
@@ -998,7 +998,7 @@ func find_objectgroups(acl_info *ACL_Info, router_data *Router_Data) {
 		// or define a new one
 		// or return combined network.
 		// Returns IP_Net object with empty IP, representing a group.
-		get_group := func(hash map[*IP_Net]*Expanded_Rule) *IP_Net {
+		get_group := func(hash map[*IP_Net]*Rule) *IP_Net {
 
 			// Get sorted and combined list of objects from hash of objects.
 			// Hash is adjusted, if objects are combined.
@@ -1143,7 +1143,7 @@ func add_protect_rules(acl_info *ACL_Info, has_final_permit bool) {
 			continue
 		}
 		acl_info.intf_rules.push(
-			&Expanded_Rule{
+			&Rule{
 				deny: true,
 				src:  network_00,
 				dst:  intf,
@@ -1170,7 +1170,7 @@ func check_final_permit(acl_info *ACL_Info) bool {
 func add_final_permit_deny_rule(acl_info *ACL_Info, add_deny, add_permit bool) {
 	if add_deny || add_permit {
 		acl_info.rules.push(
-			&Expanded_Rule{
+			&Rule{
 				deny: add_deny,
 				src:  acl_info.network_00,
 				dst:  acl_info.network_00,
@@ -1731,7 +1731,7 @@ func (tree *Prt_bintree) Noop() bool { return tree.noop }
 
 type Order [4]struct {
 	count int
-	get   func(*Expanded_Rule) interface{}
+	get   func(*Rule) interface{}
 	set   func(*Linux_Rule, interface{})
 	name  string
 }
@@ -2021,28 +2021,28 @@ func find_chains(acl_info *ACL_Info, router_data *Router_Data) {
 	}
 	order := Order{
 		{
-			get: func(rule *Expanded_Rule) interface{} { return rule.src_range },
+			get: func(rule *Rule) interface{} { return rule.src_range },
 			set: func(rule *Linux_Rule, val interface{}) {
 				rule.src_range = val.(*Prt_bintree)
 			},
 			name: "src_range",
 		},
 		{
-			get: func(rule *Expanded_Rule) interface{} { return rule.dst },
+			get: func(rule *Rule) interface{} { return rule.dst },
 			set: func(rule *Linux_Rule, val interface{}) {
 				rule.dst = val.(*Net_bintree)
 			},
 			name: "dst",
 		},
 		{
-			get: func(rule *Expanded_Rule) interface{} { return rule.prt },
+			get: func(rule *Rule) interface{} { return rule.prt },
 			set: func(rule *Linux_Rule, val interface{}) {
 				rule.prt = val.(*Prt_bintree)
 			},
 			name: "prt",
 		},
 		{
-			get: func(rule *Expanded_Rule) interface{} { return rule.src },
+			get: func(rule *Rule) interface{} { return rule.src },
 			set: func(rule *Linux_Rule, val interface{}) {
 				rule.src = val.(*Net_bintree)
 			},
@@ -2053,7 +2053,7 @@ func find_chains(acl_info *ACL_Info, router_data *Router_Data) {
 		prev_deny := rules[0].deny
 
 		// Add special rule as marker, that end of rules has been reached.
-		rules.push(&Expanded_Rule{src: nil})
+		rules.push(&Rule{src: nil})
 		var start int = 0
 		last := len(rules) - 1
 		var i int = 0
@@ -2312,7 +2312,7 @@ func convert_rule_objects(rules []*jRule, ip_net2obj Name2IP_Net, prt2obj Name2P
 			for _, dst := range dst_list {
 				for _, prt := range prt_list {
 					expanded.push(
-						&Expanded_Rule{
+						&Rule{
 							deny:          rule.Deny == 1,
 							src:           src,
 							dst:           dst,
