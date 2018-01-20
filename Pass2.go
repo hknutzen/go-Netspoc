@@ -32,7 +32,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"reflect"
+//	"reflect"
 	"regexp"
 	"sort"
 	"strconv"
@@ -490,6 +490,40 @@ type Rule_tree3 map[*IP_Net]Rule_tree2
 type Rule_tree4 map[*Proto]Rule_tree3
 type Rule_tree map[bool]Rule_tree4
 
+func (tree Rule_tree2) add (dst *IP_Net) Rule_tree1 {
+	subtree, found := tree[dst]
+	if !found {
+		subtree = make(Rule_tree1)
+		tree[dst] = subtree
+	}
+	return subtree
+}
+func (tree Rule_tree3) add (src *IP_Net) Rule_tree2 {
+	subtree, found := tree[src]
+	if !found {
+		subtree = make(Rule_tree2)
+		tree[src] = subtree
+	}
+	return subtree
+}
+func (tree Rule_tree4) add (src_range *Proto) Rule_tree3 {
+	subtree, found := tree[src_range]
+	if !found {
+		subtree = make(Rule_tree3)
+		tree[src_range] = subtree
+	}
+	return subtree
+}
+func (tree Rule_tree) add (deny bool) Rule_tree4 {
+	subtree, found := tree[deny]
+	if !found {
+		subtree = make(Rule_tree4)
+		tree[deny] = subtree
+	}
+	return subtree
+}
+
+/*
 // Dynamically typed function adds next nesting levels.
 // Map for subtrees is created if necessary.
 func dyn_tree(tree interface{}, keys ...interface{}) interface{} {
@@ -506,6 +540,7 @@ func dyn_tree(tree interface{}, keys ...interface{}) interface{} {
 	}
 	return t.Interface()
 }
+*/
 
 func optimize_rules(rules Rules, acl_info *ACL_Info) Rules {
 	prt_ip := acl_info.prt2obj["ip"]
@@ -518,10 +553,11 @@ func optimize_rules(rules Rules, acl_info *ACL_Info) Rules {
 			src_range = prt_ip
 		}
 
-		// Build nested rule_tree by dynamically typed operations.
-		// Go back to static type 'Rule_tree1'.
 		subtree1 :=
-			dyn_tree(rule_tree, rule.deny, src_range, rule.src, rule.dst).(Rule_tree1)
+			rule_tree.add(rule.deny).add(src_range).add(rule.src).add(rule.dst)
+		//// Build nested rule_tree by dynamically typed operations.
+		//// Go back to static type 'Rule_tree1'.
+		//	dyn_tree(rule_tree, rule.deny, src_range, rule.src, rule.dst).(Rule_tree1)
 		if _, found := subtree1[rule.prt]; found {
 			rule.deleted = true
 			changed = true
