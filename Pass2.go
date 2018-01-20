@@ -81,7 +81,7 @@ func diag_msg(msg string) {
 }
 
 type IP_Net struct {
-	net                         *net.IPNet
+	*net.IPNet
 	opt_networks                *IP_Net
 	no_opt_addrs, need_protect  bool
 	name                        string
@@ -102,7 +102,7 @@ type Name2Proto map[string]*Proto
 
 func create_ip_obj(ip_net string) *IP_Net {
 	_, net, _ := net.ParseCIDR(ip_net)
-	return &IP_Net{net: net, name: ip_net}
+	return &IP_Net{IPNet: net, name: ip_net}
 }
 
 func get_ip_obj(ip net.IP, mask net.IPMask, ip_net2obj Name2IP_Net) *IP_Net {
@@ -110,7 +110,7 @@ func get_ip_obj(ip net.IP, mask net.IPMask, ip_net2obj Name2IP_Net) *IP_Net {
 	name := fmt.Sprintf("%s/%d", ip.String(), prefix)
 	obj, ok := ip_net2obj[name]
 	if !ok {
-		obj = &IP_Net{net: &net.IPNet{IP: ip, Mask: mask}, name: name}
+		obj = &IP_Net{IPNet: &net.IPNet{IP: ip, Mask: mask}, name: name}
 		ip_net2obj[name] = obj
 	}
 	return obj
@@ -175,7 +175,7 @@ func setup_ip_net_relation(ip_net2obj Name2IP_Net) {
 
 	// Collect networks into mask_ip_hash.
 	for _, network := range ip_net2obj {
-		ip, mask := network.net.IP, network.net.Mask
+		ip, mask := network.IP, network.Mask
 		ip_map, ok := mask_ip_hash[string(mask)]
 		if !ok {
 			ip_map = make(map[string]*IP_Net)
@@ -739,10 +739,10 @@ func move_rules_esp_ah(rules Rules, prt2obj Name2Proto, has_log bool) Rules {
 
 	// Sort crypto rules.
 	cmp_addr := func(a, b *IP_Net) int {
-		if val := bytes.Compare(a.net.IP, b.net.IP); val != 0 {
+		if val := bytes.Compare(a.IP, b.IP); val != 0 {
 			return val
 		}
-		return bytes.Compare(a.net.Mask, b.net.Mask)
+		return bytes.Compare(a.Mask, b.Mask)
 	}
 	sort.Slice(crypto_rules, func(i, j int) bool {
 		switch strings.Compare(
@@ -766,7 +766,7 @@ func move_rules_esp_ah(rules Rules, prt2obj Name2Proto, has_log bool) Rules {
 
 func create_group(elements []*IP_Net, acl_info *ACL_Info, router_data *Router_Data) *Obj_Group {
 	name := fmt.Sprintf("g%d", router_data.obj_group_counter)
-	group_ref := &IP_Net{net: nil, name: name}
+	group_ref := &IP_Net{IPNet: nil, name: name}
 	group := &Obj_Group{
 		name:     name,
 		elements: elements,
@@ -844,13 +844,13 @@ func combine_adjacent_ip_mask(hash map[*IP_Net]*Expanded_Rule, ip_net2obj Name2I
 		elements = append(elements, element)
 	}
 	sort.Slice(elements, func(i, j int) bool {
-		switch bytes.Compare(elements[i].net.IP, elements[j].net.IP) {
+		switch bytes.Compare(elements[i].IP, elements[j].IP) {
 		case -1:
 			return true
 		case 1:
 			return false
 		}
-		return bytes.Compare(elements[i].net.Mask, elements[j].net.Mask) == -1
+		return bytes.Compare(elements[i].Mask, elements[j].Mask) == -1
 	})
 
 	// Find left and rigth part with identical mask and combine them
@@ -859,15 +859,15 @@ func combine_adjacent_ip_mask(hash map[*IP_Net]*Expanded_Rule, ip_net2obj Name2I
 	for i := 0; i < len(elements)-1; i++ {
 		element1 := elements[i]
 		element2 := elements[i+1]
-		mask := element1.net.Mask
-		if bytes.Compare(mask, element2.net.Mask) != 0 {
+		mask := element1.Mask
+		if bytes.Compare(mask, element2.Mask) != 0 {
 			continue
 		}
 		prefix, bits := mask.Size()
 		prefix--
 		up_mask := net.CIDRMask(prefix, bits)
-		ip1 := element1.net.IP
-		ip2 := element2.net.IP
+		ip1 := element1.IP
+		ip2 := element2.IP
 		if bytes.Compare(ip1.Mask(up_mask), ip2.Mask(up_mask)) != 0 {
 			continue
 		}
@@ -1230,8 +1230,8 @@ func iptables_prt_code(src_range_node, prt_node *Prt_bintree) string {
 // Handle iptables.
 /*
 func debug_bintree (tree *Net_bintree, depth string) {
-	ip      := tree.net.IP.String()
-	len, _  := tree.net.Mask.Size()
+	ip      := tree.IP.String()
+	len, _  := tree.Mask.Size()
    var subtree string
 	if tree.subtree != nil {
 		subtree = "subtree";
@@ -1262,8 +1262,8 @@ type Net_bintree struct {
 // A node with value of sub-tree S is discarded,
 // if some parent node already has sub-tree S.
 func add_bintree(tree *Net_bintree, node *Net_bintree) *Net_bintree {
-	tree_ip, tree_mask := tree.net.IP, tree.net.Mask
-	node_ip, node_mask := node.net.IP, node.net.Mask
+	tree_ip, tree_mask := tree.IP, tree.Mask
+	node_ip, node_mask := node.IP, node.Mask
 	prefix, bits := tree_mask.Size()
 	node_pref, _ := node_mask.Size()
 	var result *Net_bintree
@@ -1271,7 +1271,7 @@ func add_bintree(tree *Net_bintree, node *Net_bintree) *Net_bintree {
 	// The case where new node is larger than root node will never
 	// occur, because nodes are sorted before being added.
 
-	if prefix < node_pref && tree.net.Contains(node_ip) {
+	if prefix < node_pref && tree.Contains(node_ip) {
 
 		// Optimization for this special case:
 		// Root of tree has attribute {subtree} which is identical to
@@ -1310,7 +1310,7 @@ func add_bintree(tree *Net_bintree, node *Net_bintree) *Net_bintree {
 		}
 		result = &Net_bintree{
 			IP_Net: IP_Net{
-				net: &net.IPNet{IP: node_ip.Mask(tree_mask), Mask: tree_mask}},
+				IPNet: &net.IPNet{IP: node_ip.Mask(tree_mask), Mask: tree_mask}},
 		}
 		if bytes.Compare(node_ip, tree_ip) < 0 {
 			result.lo, result.hi = node, tree
@@ -1325,12 +1325,12 @@ func add_bintree(tree *Net_bintree, node *Net_bintree) *Net_bintree {
 		if lo == nil || hi == nil {
 			goto NO_MERGE
 		}
-		prefix, _ := result.net.Mask.Size()
+		prefix, _ := result.Mask.Size()
 		prefix++
-		if lo_prefix, _ := lo.net.Mask.Size(); prefix != lo_prefix {
+		if lo_prefix, _ := lo.Mask.Size(); prefix != lo_prefix {
 			goto NO_MERGE
 		}
-		if hi_prefix, _ := hi.net.Mask.Size(); prefix != hi_prefix {
+		if hi_prefix, _ := hi.Mask.Size(); prefix != hi_prefix {
 			goto NO_MERGE
 		}
 		if lo.subtree == nil || hi.subtree == nil {
@@ -1372,13 +1372,13 @@ func gen_addr_bintree(
 	// Sort by mask size and then by IP.
 	// I.e. large networks coming first.
 	sort.Slice(nodes, func(i, j int) bool {
-		switch bytes.Compare(nodes[i].net.Mask, nodes[j].net.Mask) {
+		switch bytes.Compare(nodes[i].Mask, nodes[j].Mask) {
 		case -1:
 			return true
 		case 1:
 			return false
 		}
-		return bytes.Compare(nodes[i].net.IP, nodes[j].net.IP) == 1
+		return bytes.Compare(nodes[i].IP, nodes[j].IP) == 1
 	})
 
 	var bintree *Net_bintree
@@ -1391,7 +1391,7 @@ func gen_addr_bintree(
 
 	// Add attribute {noop} to node which doesn't add any test to
 	// generated rule.
-	if prefix, _ := bintree.net.Mask.Size(); prefix == 0 {
+	if prefix, _ := bintree.Mask.Size(); prefix == 0 {
 		bintree.noop = true
 	}
 
@@ -2167,11 +2167,11 @@ func find_chains(acl_info *ACL_Info, router_data *Router_Data) {
 // Given an IP and mask, return its address
 // as "x.x.x.x/x" or "x.x.x.x" if prefix == 32 (128, if IPv6 option set).
 func prefix_code(ip_net *IP_Net) string {
-	size, bits := ip_net.net.Mask.Size()
+	size, bits := ip_net.Mask.Size()
 	if size == bits {
-		return ip_net.net.IP.String()
+		return ip_net.IP.String()
 	} else {
-		return ip_net.net.String()
+		return ip_net.String()
 	}
 }
 
@@ -2220,12 +2220,12 @@ func print_chains(fd *os.File, router_data *Router_Data) {
 			}
 			result := fmt.Sprintf("%s %s", jump, action_code(rule))
 			if src := rule.src; src != nil {
-				if size, _ := src.net.Mask.Size(); size != 0 {
+				if size, _ := src.Mask.Size(); size != 0 {
 					result += " -s " + prefix_code(&src.IP_Net)
 				}
 			}
 			if dst := rule.dst; dst != nil {
-				if size, _ := dst.net.Mask.Size(); size != 0 {
+				if size, _ := dst.Mask.Size(); size != 0 {
 					result += " -d " + prefix_code(&dst.IP_Net)
 				}
 			}
@@ -2272,10 +2272,10 @@ func iptables_acl_line(fd *os.File, rule *Linux_Rule, prefix string) {
 		jump = "-j"
 	}
 	result := fmt.Sprintf("%s %s %s", prefix, jump, action_code(rule))
-	if size, _ := src.net.Mask.Size(); size != 0 {
+	if size, _ := src.Mask.Size(); size != 0 {
 		result += " -s " + prefix_code(&src.IP_Net)
 	}
-	if size, _ := dst.net.Mask.Size(); size != 0 {
+	if size, _ := dst.Mask.Size(); size != 0 {
 		result += " -d " + prefix_code(&dst.IP_Net)
 	}
 	if prt.proto != "ip" {
@@ -2506,7 +2506,7 @@ func prepare_acls(path string) *Router_Data {
 func cisco_acl_addr(obj *IP_Net, model string) string {
 
 	// Object group.
-	if obj.net == nil {
+	if obj.IPNet == nil {
 		var keyword string
 		if model == "NX-OS" {
 			keyword = "addrgroup"
@@ -2516,18 +2516,18 @@ func cisco_acl_addr(obj *IP_Net, model string) string {
 		return keyword + " " + obj.name
 	}
 
-	prefix, bits := obj.net.Mask.Size()
+	prefix, bits := obj.Mask.Size()
 	if prefix == 0 {
 		return "any"
 	} else if model == "NX-OS" {
 		return obj.name
 	} else {
-		ip := obj.net.IP
+		ip := obj.IP
 		ip_code := ip.String()
 		if prefix == bits {
 			return "host " + ip_code
 		} else {
-			mask := net.IP(obj.net.Mask)
+			mask := net.IP(obj.Mask)
 
 			// Inverse mask bits.
 			// Must not inverse original mask, shared by multiple rules.
@@ -2562,7 +2562,7 @@ func print_object_groups(fd *os.File, acl_info *ACL_Info, model string) {
 
 			// Reject network with mask = 0 in group.
 			// This occurs if optimization didn't work correctly.
-			if size, _ := element.net.Mask.Size(); size == 0 {
+			if size, _ := element.Mask.Size(); size == 0 {
 				fatal_err("Unexpected network with mask 0 in object-group")
 			}
 			adr := cisco_acl_addr(element, model)
