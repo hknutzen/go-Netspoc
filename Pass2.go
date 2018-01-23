@@ -165,7 +165,7 @@ func get_net00_addr() string {
 	}
 	return result
 }
-	
+
 func setup_ip_net_relation(ip_net2obj Name2IP_Net) {
 	net00 := get_net00_addr()
 	if _, ok := ip_net2obj[net00]; !ok {
@@ -643,7 +643,7 @@ func join_ranges(rules Rules, prt2obj Name2Proto) Rules {
 		if !rule.prt.has_neighbor {
 			continue
 		}
-		
+
 		// Collect rules with identical deny/src/dst/src_range log values
 		// and identical TCP or UDP protocol.
 		k := key{
@@ -2046,7 +2046,7 @@ func find_chains(acl_info *ACL_Info, router_data *Router_Data) {
 	// Build rule trees. Generate and process separate tree for
 	// adjacent rules with same 'deny' attribute.
 	// Store rule tree together with order of attributes.
-	type tree_and_order = struct {
+	type tree_and_order struct {
 		tree  *Lrule_tree
 		order *Order
 	}
@@ -2274,7 +2274,7 @@ func print_chains(fd *os.File, router_data *Router_Data) {
 				// break
 			case  prt == nil:
 				if src_range.Proto.proto == "ip" {
-					break 
+					break
 				}
 				prt = new(Prt_bintree)
 				switch src_range.Proto.proto {
