@@ -3,7 +3,7 @@ package main
 /*
 Pass 2 of Netspoc - A Network Security Policy Compiler
 
-(C) 2017 by Heinz Knutzen <heinz.knutzen@googlemail.com>
+(C) 2018 by Heinz Knutzen <heinz.knutzen@googlemail.com>
 
 http://hknutzen.github.com/Netspoc
 
@@ -43,7 +43,6 @@ type Config struct {
 	concurrent int
 	pipe       bool
 	verbose    bool
-	ipv6       bool
 }
 
 var (
@@ -52,7 +51,6 @@ var (
 		concurrent: 8,
 		pipe:       false,
 		verbose:    false,
-		ipv6:       false,
 	}
 )
 
@@ -156,9 +154,9 @@ func (s ByMask) Less(i, j int) bool {
 	return bytes.Compare(s[i], s[j]) < 0
 }
 
-func get_net00_addr() string {
+func get_net00_addr(ipv6 bool) string {
 	var result string
-	if config.ipv6 {
+	if ipv6 {
 		result = "::/0"
 	} else {
 		result = "0.0.0.0/0"
@@ -166,8 +164,8 @@ func get_net00_addr() string {
 	return result
 }
 
-func setup_ip_net_relation(ip_net2obj Name2IP_Net) {
-	net00 := get_net00_addr()
+func setup_ip_net_relation(ip_net2obj Name2IP_Net, ipv6 bool) {
+	net00 := get_net00_addr(ipv6)
 	if _, ok := ip_net2obj[net00]; !ok {
 		ip_net2obj[net00] = create_ip_obj(net00)
 	}
@@ -2201,7 +2199,7 @@ func find_chains(acl_info *ACL_Info, router_data *Router_Data) {
 }
 
 // Given an IP and mask, return its address
-// as "x.x.x.x/x" or "x.x.x.x" if prefix == 32 (128, if IPv6 option set).
+// as "x.x.x.x/x" or "x.x.x.x" if prefix == 32 (128 for IPv6).
 func prefix_code(ip_net *IP_Net) string {
 	size, bits := ip_net.Mask.Size()
 	if size == bits {
@@ -2449,6 +2447,8 @@ func prepare_acls(path string) *Router_Data {
 	if err != nil {
 		panic(err)
 	}
+	re := regexp.MustCompile("/ipv6/[^/]+$")
+	ipv6 := re.MatchString(path)
 	model := jdata.Model
 	router_data.model = model
 	router_data.log_deny = jdata.Log_deny
@@ -2482,7 +2482,7 @@ func prepare_acls(path string) *Router_Data {
 		for _, obj := range need_protect {
 			obj.need_protect = true
 		}
-		setup_ip_net_relation(ip_net2obj)
+		setup_ip_net_relation(ip_net2obj, ipv6)
 
 		acl_info := &ACL_Info{
 			name:           raw_info.Name,
@@ -2496,7 +2496,7 @@ func prepare_acls(path string) *Router_Data {
 			no_opt_addrs:   no_opt_addrs,
 			filter_any_src: raw_info.Filter_any_src == 1,
 			need_protect:   need_protect,
-			network_00:     ip_net2obj[get_net00_addr()],
+			network_00:     ip_net2obj[get_net00_addr(ipv6)],
 		}
 		acls[i] = acl_info
 
@@ -2806,15 +2806,15 @@ func isRegular(path string) bool {
 // Try to use pass2 file from previous run.
 // If identical files with extension .config and .rules
 // exist in directory .prev/, then use copy.
-func try_prev(device_name, dir, prev string) bool {
+func try_prev(device_path, dir, prev string) bool {
 	if !isDir(prev) {
 		return false
 	}
-	prev_file := prev + "/" + device_name
+	prev_file := prev + "/" + device_path
 	if !isRegular(prev_file) {
 		return false
 	}
-	code_file := dir + "/" + device_name
+	code_file := dir + "/" + device_path
 	for _, ext := range [...]string{"config", "rules"} {
 		pass1name := code_file + "." + ext
 		pass1prev := prev_file + "." + ext
@@ -2832,7 +2832,7 @@ func try_prev(device_name, dir, prev string) bool {
 	}
 
 	// File was found and copied successfully.
-	diag_msg("Reused .prev/" + device_name)
+	diag_msg("Reused .prev/" + device_path)
 	return true
 }
 
@@ -2853,13 +2853,13 @@ func read_file_lines(filename string) []string {
 	return result
 }
 
-func pass2_file(device_name, dir string, c chan bool) {
+func pass2_file(device_path, dir string, c chan bool) {
 	success := false
 
 	// Send ok on success
 	defer func() { c <- success }()
 
-	file := dir + "/" + device_name
+	file := dir + "/" + device_path
 	router_data := prepare_acls(file + ".rules")
 	config := read_file_lines(file + ".config")
 	print_combined(config, router_data, file)
@@ -2885,19 +2885,19 @@ func apply_concurrent(device_names_fh *os.File, dir, prev string) {
 	// Read to be processed files line by line.
 	scanner := bufio.NewScanner(device_names_fh)
 	for scanner.Scan() {
-		device_name := scanner.Text()
+		device_path := scanner.Text()
 
-		if try_prev(device_name, dir, prev) {
+		if try_prev(device_path, dir, prev) {
 			reused++
 		} else if workers_left > 0 {
 			// Start concurrent jobs at beginning.
-			go pass2_file(device_name, dir, c)
+			go pass2_file(device_path, dir, c)
 			workers_left--
 			started++
 		} else {
 			// Start next job, after some job has finished.
 			wait_and_check()
-			go pass2_file(device_name, dir, c)
+			go pass2_file(device_path, dir, c)
 			started++
 		}
 	}
