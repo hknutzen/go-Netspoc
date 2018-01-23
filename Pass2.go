@@ -32,7 +32,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
-//	"reflect"
+	//	"reflect"
 	"regexp"
 	"sort"
 	"strconv"
@@ -490,7 +490,7 @@ type Rule_tree3 map[*IP_Net]Rule_tree2
 type Rule_tree4 map[*Proto]Rule_tree3
 type Rule_tree map[bool]Rule_tree4
 
-func (tree Rule_tree2) add (dst *IP_Net) Rule_tree1 {
+func (tree Rule_tree2) add(dst *IP_Net) Rule_tree1 {
 	subtree, found := tree[dst]
 	if !found {
 		subtree = make(Rule_tree1)
@@ -498,7 +498,7 @@ func (tree Rule_tree2) add (dst *IP_Net) Rule_tree1 {
 	}
 	return subtree
 }
-func (tree Rule_tree3) add (src *IP_Net) Rule_tree2 {
+func (tree Rule_tree3) add(src *IP_Net) Rule_tree2 {
 	subtree, found := tree[src]
 	if !found {
 		subtree = make(Rule_tree2)
@@ -506,7 +506,7 @@ func (tree Rule_tree3) add (src *IP_Net) Rule_tree2 {
 	}
 	return subtree
 }
-func (tree Rule_tree4) add (src_range *Proto) Rule_tree3 {
+func (tree Rule_tree4) add(src_range *Proto) Rule_tree3 {
 	subtree, found := tree[src_range]
 	if !found {
 		subtree = make(Rule_tree3)
@@ -514,7 +514,7 @@ func (tree Rule_tree4) add (src_range *Proto) Rule_tree3 {
 	}
 	return subtree
 }
-func (tree Rule_tree) add (deny bool) Rule_tree4 {
+func (tree Rule_tree) add(deny bool) Rule_tree4 {
 	subtree, found := tree[deny]
 	if !found {
 		subtree = make(Rule_tree4)
@@ -1382,7 +1382,7 @@ func add_bintree(tree *Net_bintree, node *Net_bintree) *Net_bintree {
 		result.lo = nil
 		result.hi = nil
 	}
-	NO_MERGE:
+NO_MERGE:
 	return result
 }
 
@@ -2272,7 +2272,7 @@ func print_chains(fd *os.File, router_data *Router_Data) {
 				// break
 			case prt != nil && prt.Proto.proto == "ip":
 				// break
-			case  prt == nil:
+			case prt == nil:
 				if src_range.Proto.proto == "ip" {
 					break
 				}
@@ -2554,7 +2554,15 @@ func cisco_acl_addr(obj *IP_Net, model string) string {
 
 	prefix, bits := obj.Mask.Size()
 	if prefix == 0 {
-		return "any"
+		if model == "ASA" {
+			if bits == 32 {
+				return "any4"
+			} else {
+				return "any6"
+			}
+		} else {
+			return "any"
+		}
 	} else if model == "NX-OS" {
 		return obj.name
 	} else {
