@@ -123,7 +123,7 @@ func create_prt_obj(descr string) *Proto {
 	case "tcp", "udp":
 		p1, _ := strconv.Atoi(splice[1])
 		p2, _ := strconv.Atoi(splice[2])
-		prt.ports = [...]int{p1, p2}
+		prt.ports = [2]int{p1, p2}
 		if len(splice) > 3 {
 			prt.established = true
 		}
