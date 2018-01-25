@@ -2889,6 +2889,10 @@ func apply_concurrent(device_names_fh *os.File, dir, prev string) {
 
 		if try_prev(device_path, dir, prev) {
 			reused++
+		} else if 1 >= concurrent {
+			// Process sequentially.
+			pass2_file(device_path, dir, c)
+			wait_and_check()
 		} else if workers_left > 0 {
 			// Start concurrent jobs at beginning.
 			go pass2_file(device_path, dir, c)
