@@ -142,18 +142,6 @@ func create_prt_obj(descr string) *Proto {
 	return &prt
 }
 
-type ByMask []net.IPMask
-
-func (s ByMask) Len() int {
-	return len(s)
-}
-func (s ByMask) Swap(i, j int) {
-	s[i], s[j] = s[j], s[i]
-}
-func (s ByMask) Less(i, j int) bool {
-	return bytes.Compare(s[i], s[j]) < 0
-}
-
 func get_net00_addr(ipv6 bool) string {
 	var result string
 	if ipv6 {
@@ -188,7 +176,10 @@ func setup_ip_net_relation(ip_net2obj Name2IP_Net, ipv6 bool) {
 	for k := range mask_ip_hash {
 		mask_list = append(mask_list, net.IPMask(k))
 	}
-	sort.Sort(sort.Reverse(ByMask(mask_list)))
+	less := func (i, j int) bool {
+		return bytes.Compare(mask_list[i], mask_list[j]) == -1
+	}
+	sort.Slice(mask_list, func(i, j int) bool { return less(j, i) })
 	for i, mask := range mask_list {
 		upper_masks := mask_list[i+1:]
 
@@ -216,7 +207,7 @@ func setup_ip_net_relation(ip_net2obj Name2IP_Net, ipv6 bool) {
 
 	// Propagate content of attribute opt_networks to all subnets.
 	// Go from large to smaller networks.
-	sort.Sort((ByMask(mask_list)))
+	sort.Slice(mask_list, less)
 	for _, mask := range mask_list {
 		for _, network := range mask_ip_hash[string(mask)] {
 			up := network.up
