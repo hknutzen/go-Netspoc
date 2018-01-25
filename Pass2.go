@@ -2506,6 +2506,10 @@ func prepare_acls(path string) *Router_Data {
 			intf_rules = optimize_rules(intf_rules, acl_info)
 			intf_rules = join_ranges(intf_rules, prt2obj)
 			rules = optimize_rules(rules, acl_info)
+
+			// Join adjacent port ranges. This must be called after
+			// local optimization, because protocols will be
+			// overlapping again after joining.
 			rules = join_ranges(rules, prt2obj)
 			acl_info.intf_rules = move_rules_esp_ah(intf_rules, prt2obj, has_log1)
 			acl_info.rules = move_rules_esp_ah(rules, prt2obj, has_log2)
