@@ -643,7 +643,6 @@ func join_ranges(rules Rules, prt2obj Name2Proto) Rules {
 	}
 
 	rule2range := make(map[*Rule][2]int)
-	rule2del := make(map[*Rule]bool)
 	for _, sorted := range key2rules {
 		if len(sorted) < 2 {
 			continue
@@ -678,7 +677,7 @@ func join_ranges(rules Rules, prt2obj Name2Proto) Rules {
 				}
 
 				// Mark previous rule as deleted.
-				rule2del[rule_a] = true
+				rule_a.deleted = true
 				changed = true
 			}
 			rule_a = rule_b
@@ -691,7 +690,7 @@ func join_ranges(rules Rules, prt2obj Name2Proto) Rules {
 		for _, rule := range rules {
 
 			// Ignore deleted rules
-			if rule2del[rule] {
+			if rule.deleted {
 				continue
 			}
 
