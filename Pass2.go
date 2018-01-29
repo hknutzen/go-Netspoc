@@ -862,19 +862,15 @@ func add_local_deny_rules(acl_info *ACL_Info, router_data *Router_Data) {
 func combine_adjacent_ip_mask(hash map[*IP_Net]*Rule, ip_net2obj Name2IP_Net) []*IP_Net {
 
 	// Take objects from keys of map.
-	// Sort by mask. Adjacent networks will be adjacent elements then.
+	// Sort by IP address. Adjacent networks will be adjacent elements then.
+   // Precondition is, that list already has been optimized and
+   // therefore has no redundant elements.
 	elements := make([]*IP_Net, 0, len(hash))
 	for element := range hash {
 		elements = append(elements, element)
 	}
 	sort.Slice(elements, func(i, j int) bool {
-		switch bytes.Compare(elements[i].IP, elements[j].IP) {
-		case -1:
-			return true
-		case 1:
-			return false
-		}
-		return bytes.Compare(elements[i].Mask, elements[j].Mask) == -1
+		return bytes.Compare(elements[i].IP, elements[j].IP) == -1
 	})
 
 	// Find left and rigth part with identical mask and combine them
