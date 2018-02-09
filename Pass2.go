@@ -1084,7 +1084,7 @@ func findObjectgroups(aclInfo *aclInfo, routerData *routerData) {
 					rule.src = groupOrObj
 				}
 			}
-			newRules = append(newRules, rule)
+			newRules.push(rule)
 		}
 		rules = newRules
 	}
@@ -1986,7 +1986,7 @@ func findChains(aclInfo *aclInfo, routerData *routerData) {
 						if !bintree.Noop() {
 							setter(&newRule, bintree)
 						}
-						newRules = append(newRules, &newRule)
+						newRules.push(&newRule)
 					}
 				} else {
 					newRules = append(newRules, rules...)
