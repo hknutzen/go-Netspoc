@@ -899,8 +899,8 @@ func combineAdjacentIPMask(hash map[*ipNet]*Rule, ipNet2obj name2ipNet) []*ipNet
 		elements[i] = upElement
 
 		// Remove right part at [i+1].
-		copy(elements[i+1:], elements[i+2:])	// Shift [:i+2] left one index.
-		elements = elements[:len(elements)-1];
+		copy(elements[i+1:], elements[i+2:]) // Shift [:i+2] left one index.
+		elements = elements[:len(elements)-1]
 
 		// Add new element and remove left and rigth parts.
 		hash[upElement] = hash[element1]
@@ -2564,7 +2564,7 @@ func ciscoACLAddr(obj *ipNet, model string) string {
 		mask = copy
 	}
 	if bits == 128 && model == "ASA" {
-		return fmt.Sprintf("%s/%d", ipCode, prefix);
+		return fmt.Sprintf("%s/%d", ipCode, prefix)
 	}
 	maskCode := mask.String()
 	return ipCode + " " + maskCode
