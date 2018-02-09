@@ -394,7 +394,7 @@ func setupPrtRelation(prt2obj name2Proto) {
 #}
 */
 
-func optimizeRedundantRules(cmpHash, chgHash RuleTree) bool {
+func optimizeRedundantRules(cmpHash, chgHash ruleTree) bool {
 	changed := false
 	for deny, chgHash := range chgHash {
 		for {
@@ -475,40 +475,40 @@ func (rules *Rules) push(rule *Rule) {
 
 // Build rule tree from nested maps.
 // Leaf nodes have rules as values.
-type RuleTree1 map[*proto]*Rule
-type RuleTree2 map[*ipNet]RuleTree1
-type RuleTree3 map[*ipNet]RuleTree2
-type RuleTree4 map[*proto]RuleTree3
-type RuleTree map[bool]RuleTree4
+type ruleTree1 map[*proto]*Rule
+type ruleTree2 map[*ipNet]ruleTree1
+type ruleTree3 map[*ipNet]ruleTree2
+type ruleTree4 map[*proto]ruleTree3
+type ruleTree map[bool]ruleTree4
 
-func (tree RuleTree2) add(dst *ipNet) RuleTree1 {
+func (tree ruleTree2) add(dst *ipNet) ruleTree1 {
 	subtree, found := tree[dst]
 	if !found {
-		subtree = make(RuleTree1)
+		subtree = make(ruleTree1)
 		tree[dst] = subtree
 	}
 	return subtree
 }
-func (tree RuleTree3) add(src *ipNet) RuleTree2 {
+func (tree ruleTree3) add(src *ipNet) ruleTree2 {
 	subtree, found := tree[src]
 	if !found {
-		subtree = make(RuleTree2)
+		subtree = make(ruleTree2)
 		tree[src] = subtree
 	}
 	return subtree
 }
-func (tree RuleTree4) add(srcRange *proto) RuleTree3 {
+func (tree ruleTree4) add(srcRange *proto) ruleTree3 {
 	subtree, found := tree[srcRange]
 	if !found {
-		subtree = make(RuleTree3)
+		subtree = make(ruleTree3)
 		tree[srcRange] = subtree
 	}
 	return subtree
 }
-func (tree RuleTree) add(deny bool) RuleTree4 {
+func (tree ruleTree) add(deny bool) ruleTree4 {
 	subtree, found := tree[deny]
 	if !found {
-		subtree = make(RuleTree4)
+		subtree = make(ruleTree4)
 		tree[deny] = subtree
 	}
 	return subtree
@@ -538,7 +538,7 @@ func optimizeRules(rules Rules, aclInfo *ACLInfo) Rules {
 	changed := false
 
 	// Add rule to rule tree.
-	addRule := func(ruleTree RuleTree, rule *Rule) {
+	addRule := func(ruleTree ruleTree, rule *Rule) {
 		srcRange := rule.srcRange
 		if srcRange == nil {
 			srcRange = prtIP
@@ -547,8 +547,8 @@ func optimizeRules(rules Rules, aclInfo *ACLInfo) Rules {
 		subtree1 :=
 			ruleTree.add(rule.deny).add(srcRange).add(rule.src).add(rule.dst)
 		//// Build nested ruleTree by dynamically typed operations.
-		//// Go back to static type 'RuleTree1'.
-		//	dynTree(ruleTree, rule.deny, srcRange, rule.src, rule.dst).(RuleTree1)
+		//// Go back to static type 'ruleTree1'.
+		//	dynTree(ruleTree, rule.deny, srcRange, rule.src, rule.dst).(ruleTree1)
 		if _, found := subtree1[rule.prt]; found {
 			rule.deleted = true
 			changed = true
@@ -558,17 +558,17 @@ func optimizeRules(rules Rules, aclInfo *ACLInfo) Rules {
 	}
 
 	// For comparing redundant rules.
-	ruleTree := make(RuleTree)
+	tree := make(ruleTree)
 
 	// Fill rule tree.
 	for _, rule := range rules {
-		addRule(ruleTree, rule)
+		addRule(tree, rule)
 	}
 
-	changed = optimizeRedundantRules(ruleTree, ruleTree) || changed
+	changed = optimizeRedundantRules(tree, tree) || changed
 
 	// Implement rules as secondary rule, if possible.
-	secondaryTree := make(RuleTree)
+	secondaryTree := make(ruleTree)
 	for _, rule := range rules {
 		if !rule.optSecondary {
 			continue
@@ -601,7 +601,7 @@ func optimizeRules(rules Rules, aclInfo *ACLInfo) Rules {
 		changed =
 			optimizeRedundantRules(secondaryTree, secondaryTree) || changed
 		changed =
-			optimizeRedundantRules(secondaryTree, ruleTree) || changed
+			optimizeRedundantRules(secondaryTree, tree) || changed
 	}
 
 	if changed {
@@ -965,7 +965,7 @@ func findObjectgroups(aclInfo *ACLInfo, routerData *RouterData) {
 			srcRange, prt *proto
 			log           string
 		}
-		groupRuleTree := make(map[key]map[*ipNet]*Rule)
+		groupruleTree := make(map[key]map[*ipNet]*Rule)
 
 		// Find groups of rules with identical
 		// deny, srcRange, prt, log, src/dst and different dst/src.
@@ -980,10 +980,10 @@ func findObjectgroups(aclInfo *ACLInfo, routerData *RouterData) {
 				this, that = that, this
 			}
 			k := key{deny, that, srcRange, prt, log}
-			href, ok := groupRuleTree[k]
+			href, ok := groupruleTree[k]
 			if !ok {
 				href = make(map[*ipNet]*Rule)
-				groupRuleTree[k] = href
+				groupruleTree[k] = href
 			}
 			href[this] = rule
 		}
@@ -999,7 +999,7 @@ func findObjectgroups(aclInfo *ACLInfo, routerData *RouterData) {
 			hash map[*ipNet]*Rule
 		}
 		groupGlue := make(map[*Rule]*glueType)
-		for _, href := range groupRuleTree {
+		for _, href := range groupruleTree {
 
 			// href is {dst/src => rule, ...}
 			if len(href) < minObjectGroupSize {
