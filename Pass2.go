@@ -1238,12 +1238,10 @@ func iptablesPrtCode(srcRangeNode, prtNode *prtBintree) string {
 			code := prt.icmpCode
 			if code != -1 {
 				return fmt.Sprintf("%s --icmp-type %d/%d", result, icmpType, code)
-			} else {
-				return fmt.Sprintf("%s --icmp-type %d", result, icmpType)
 			}
-		} else {
-			return result
+			return fmt.Sprintf("%s --icmp-type %d", result, icmpType)
 		}
+		return result
 	default:
 		return result
 	}
@@ -1424,24 +1422,21 @@ func genAddrBintree(
 func (tree *netBintree) Hi() npBintree {
 	if hi := tree.hi; hi != nil {
 		return hi
-	} else {
-		return nil
 	}
+	return nil
 }
 func (tree *netBintree) Lo() npBintree {
 	if lo := tree.lo; lo != nil {
 		return lo
-	} else {
-		return nil
 	}
+	return nil
 }
 func (tree *netBintree) Seq() []*prtBintree { return nil }
 func (tree *netBintree) Subtree() npBintree {
 	if subtree := tree.subtree; subtree != nil {
 		return subtree
-	} else {
-		return nil
 	}
+	return nil
 }
 func (tree *netBintree) Noop() bool { return tree.noop }
 
@@ -1730,24 +1725,21 @@ PRT:
 func (tree *prtBintree) Hi() npBintree {
 	if hi := tree.hi; hi != nil {
 		return hi
-	} else {
-		return nil
 	}
+	return nil
 }
 func (tree *prtBintree) Lo() npBintree {
 	if lo := tree.lo; lo != nil {
 		return lo
-	} else {
-		return nil
 	}
+	return nil
 }
 func (tree *prtBintree) Seq() []*prtBintree { return tree.seq }
 func (tree *prtBintree) Subtree() npBintree {
 	if subtree := tree.subtree; subtree != nil {
 		return subtree
-	} else {
-		return nil
 	}
+	return nil
 }
 func (tree *prtBintree) Noop() bool { return tree.noop }
 
@@ -2024,9 +2016,8 @@ func findChains(aclInfo *aclInfo, routerData *routerData) {
 			newRule := &linuxRule{chain: chain, useGoto: true}
 			setter(newRule, tree)
 			return linuxRules{newRule}
-		} else {
-			return newRules
 		}
+		return newRules
 	}
 
 	// Build rule trees. Generate and process separate tree for
@@ -2038,7 +2029,7 @@ func findChains(aclInfo *aclInfo, routerData *routerData) {
 	}
 	var ruleSets []treeAndOrder
 	var count [4]map[interface{}]int
-	for i, _ := range count {
+	for i := range count {
 		count[i] = make(map[interface{}]int)
 	}
 	order := attrOrder{
@@ -2076,9 +2067,9 @@ func findChains(aclInfo *aclInfo, routerData *routerData) {
 
 		// Add special rule as marker, that end of rules has been reached.
 		rules.push(&Rule{src: nil})
-		var start int = 0
+		var start = 0
 		last := len(rules) - 1
-		var i int = 0
+		var i = 0
 		for {
 			rule := rules[i]
 			deny := rule.deny
@@ -2192,9 +2183,8 @@ func prefixCode(ipNet *ipNet) string {
 	size, bits := ipNet.Mask.Size()
 	if size == bits {
 		return ipNet.IP.String()
-	} else {
-		return ipNet.String()
 	}
+	return ipNet.String()
 }
 
 func actionCode(rule *linuxRule) (result string) {
@@ -2549,35 +2539,31 @@ func ciscoACLAddr(obj *ipNet, model string) string {
 		if model == "ASA" {
 			if bits == 32 {
 				return "any4"
-			} else {
-				return "any6"
 			}
-		} else {
-			return "any"
+			return "any6"
 		}
+		return "any"
 	} else if model == "NX-OS" {
 		return obj.name
-	} else {
-		ip := obj.IP
-		ipCode := ip.String()
-		if prefix == bits {
-			return "host " + ipCode
-		} else {
-			mask := net.IP(obj.Mask)
-
-			// Inverse mask bits.
-			// Must not inverse original mask, shared by multiple rules.
-			if model == "NX-OS" || model == "IOS" {
-				copy := make([]byte, len(mask))
-				for i, byte := range mask {
-					copy[i] = ^byte
-				}
-				mask = copy
-			}
-			maskCode := mask.String()
-			return ipCode + " " + maskCode
-		}
 	}
+	ip := obj.IP
+	ipCode := ip.String()
+	if prefix == bits {
+		return "host " + ipCode
+	}
+	mask := net.IP(obj.Mask)
+
+	// Inverse mask bits.
+	// Must not inverse original mask, shared by multiple rules.
+	if model == "NX-OS" || model == "IOS" {
+		copy := make([]byte, len(mask))
+		for i, byte := range mask {
+			copy[i] = ^byte
+		}
+		mask = copy
+	}
+	maskCode := mask.String()
+	return ipCode + " " + maskCode
 }
 
 func printObjectGroups(fd *os.File, aclInfo *aclInfo, model string) {
@@ -2655,12 +2641,10 @@ func ciscoPrtCode(srcRange, prt *proto) (t1, t2, t3 string) {
 			code := prt.icmpCode
 			if code != -1 {
 				return protocol, "", fmt.Sprint(icmpType, code)
-			} else {
-				return protocol, "", fmt.Sprint(icmpType)
 			}
-		} else {
-			return protocol, "", ""
+			return protocol, "", fmt.Sprint(icmpType)
 		}
+		return protocol, "", ""
 	default:
 		return protocol, "", ""
 	}
@@ -2669,9 +2653,8 @@ func ciscoPrtCode(srcRange, prt *proto) (t1, t2, t3 string) {
 func getCiscoAction(deny bool) string {
 	if deny {
 		return "deny"
-	} else {
-		return "permit"
 	}
+	return "permit"
 }
 
 func printAsaStdACL(fd *os.File, aclInfo *aclInfo, model string) {
