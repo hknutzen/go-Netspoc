@@ -2562,6 +2562,9 @@ func ciscoACLAddr(obj *ipNet, model string) string {
 		}
 		mask = copy
 	}
+	if bits == 128 && model == "ASA" {
+		return fmt.Sprintf("%s/%d", ipCode, prefix);
+	}
 	maskCode := mask.String()
 	return ipCode + " " + maskCode
 }
