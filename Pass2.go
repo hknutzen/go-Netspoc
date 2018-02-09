@@ -87,18 +87,18 @@ type ipNet struct {
 	up                      *ipNet
 	isSupernetOfNeedProtect map[*ipNet]bool
 }
-type Proto struct {
-	proto       string
+type proto struct {
+	protocol    string
 	ports       [2]int
 	established bool
 	icmpType    int
 	icmpCode    int
 	name        string
-	up          *Proto
+	up          *proto
 	hasNeighbor bool
 }
 type name2ipNet map[string]*ipNet
-type name2Proto map[string]*Proto
+type name2Proto map[string]*proto
 
 func createIPObj(ipNetName string) *ipNet {
 	_, net, _ := net.ParseCIDR(ipNetName)
@@ -116,12 +116,12 @@ func getIPObj(ip net.IP, mask net.IPMask, ipNet2obj name2ipNet) *ipNet {
 	return obj
 }
 
-func createPrtObj(descr string) *Proto {
+func createPrtObj(descr string) *proto {
 	splice := strings.Split(descr, " ")
-	proto := splice[0]
-	prt := Proto{proto: proto, name: descr}
+	protocol := splice[0]
+	prt := proto{protocol: protocol, name: descr}
 
-	switch proto {
+	switch protocol {
 	case "tcp", "udp":
 		p1, _ := strconv.Atoi(splice[1])
 		p2, _ := strconv.Atoi(splice[2])
@@ -248,10 +248,10 @@ func addTCPUDPIcmp(prt2obj name2Proto) {
 // If no including range is found, link it with next larger protocol.
 // Set attribute {hasNeighbor} to range adjacent to upper port.
 // Abort on overlapping ranges.
-func orderRanges(proto string, prt2obj name2Proto, up *Proto) {
-	var ranges []*Proto
+func orderRanges(protocol string, prt2obj name2Proto, up *proto) {
+	var ranges []*proto
 	for _, v := range prt2obj {
-		if v.proto == proto && !v.established {
+		if v.protocol == protocol && !v.established {
 			ranges = append(ranges, v)
 		}
 	}
@@ -269,8 +269,8 @@ func orderRanges(proto string, prt2obj name2Proto, up *Proto) {
 	// Set attributes {up} and {hasNeighbor}.
 	// Return position of range which isn't sub-range or undef
 	// if end of array is reached.
-	var checkSubrange func(a *Proto, a1, a2, i int) int
-	checkSubrange = func(a *Proto, a1, a2, i int) int {
+	var checkSubrange func(a *proto, a1, a2, i int) int
+	checkSubrange = func(a *proto, a1, a2, i int) int {
 		for {
 			if i == len(ranges) {
 				return 0
@@ -351,8 +351,8 @@ func setupPrtRelation(prt2obj name2Proto) {
 	}
 
 	for _, prt := range prt2obj {
-		proto := prt.proto
-		if proto == "icmp" {
+		protocol := prt.protocol
+		if protocol == "icmp" {
 			if prt.icmpType != -1 {
 				if prt.icmpCode != -1 {
 					up, ok := prt2obj[fmt.Sprint("icmp ", prt.icmpType)]
@@ -366,7 +366,7 @@ func setupPrtRelation(prt2obj name2Proto) {
 			} else {
 				prt.up = prtIP
 			}
-		} else if _, err := strconv.Atoi(proto); err == nil {
+		} else if _, err := strconv.Atoi(protocol); err == nil {
 
 			// Numeric protocol.
 			prt.up = prtIP
@@ -461,7 +461,7 @@ func optimizeRedundantRules(cmpHash, chgHash RuleTree) bool {
 type Rule struct {
 	deny          bool
 	src, dst      *ipNet
-	prt, srcRange *Proto
+	prt, srcRange *proto
 	log           string
 	deleted       bool
 	optSecondary  bool
@@ -475,10 +475,10 @@ func (rules *Rules) push(rule *Rule) {
 
 // Build rule tree from nested maps.
 // Leaf nodes have rules as values.
-type RuleTree1 map[*Proto]*Rule
+type RuleTree1 map[*proto]*Rule
 type RuleTree2 map[*ipNet]RuleTree1
 type RuleTree3 map[*ipNet]RuleTree2
-type RuleTree4 map[*Proto]RuleTree3
+type RuleTree4 map[*proto]RuleTree3
 type RuleTree map[bool]RuleTree4
 
 func (tree RuleTree2) add(dst *ipNet) RuleTree1 {
@@ -497,7 +497,7 @@ func (tree RuleTree3) add(src *ipNet) RuleTree2 {
 	}
 	return subtree
 }
-func (tree RuleTree4) add(srcRange *Proto) RuleTree3 {
+func (tree RuleTree4) add(srcRange *proto) RuleTree3 {
 	subtree, found := tree[srcRange]
 	if !found {
 		subtree = make(RuleTree3)
@@ -622,7 +622,7 @@ func joinRanges(rules Rules, prt2obj name2Proto) Rules {
 	type key struct {
 		deny       bool
 		src, dst   *ipNet
-		srcRange   *Proto
+		srcRange   *proto
 		log, proto string
 	}
 	changed := false
@@ -639,7 +639,7 @@ func joinRanges(rules Rules, prt2obj name2Proto) Rules {
 		// and identical TCP or UDP protocol.
 		k := key{
 			rule.deny, rule.src, rule.dst, rule.srcRange, rule.log,
-			rule.prt.proto,
+			rule.prt.protocol,
 		}
 		key2rules[k] = append(key2rules[k], rule)
 	}
@@ -698,14 +698,14 @@ func joinRanges(rules Rules, prt2obj name2Proto) Rules {
 
 			// Process rule with joined port ranges.
 			if ports, ok := rule2range[rule]; ok {
-				proto := rule.prt.proto
-				key := fmt.Sprintf("%s %d %d", proto, ports[0], ports[1])
+				protocol := rule.prt.protocol
+				key := fmt.Sprintf("%s %d %d", protocol, ports[0], ports[1])
 
 				// Try to find existing prt with matching range.
 				// This is needed for findObjectgroups to work.
 				newPrt, ok := prt2obj[key]
 				if !ok {
-					newPrt = &Proto{proto: proto, ports: ports}
+					newPrt = &proto{protocol: protocol, ports: ports}
 					prt2obj[key] = newPrt
 				}
 				rule.prt = newPrt
@@ -727,7 +727,7 @@ type ACLInfo struct {
 	filterOnly, optNetworks, noOptAddrs, needProtect []*ipNet
 	filterAnySrc                                     bool
 	network00                                        *ipNet
-	prtIP                                            *Proto
+	prtIP                                            *proto
 	objectGroups                                     []*ObjGroup
 }
 
@@ -772,8 +772,8 @@ func moveRulesEspAh(rules Rules, prt2obj name2Proto, hasLog bool) Rules {
 	}
 	sort.Slice(cryptoRules, func(i, j int) bool {
 		switch strings.Compare(
-			cryptoRules[i].prt.proto,
-			cryptoRules[j].prt.proto) {
+			cryptoRules[i].prt.protocol,
+			cryptoRules[j].prt.protocol) {
 		case -1:
 			return true
 		case 1:
@@ -962,7 +962,7 @@ func findObjectgroups(aclInfo *ACLInfo, routerData *RouterData) {
 		type key struct {
 			deny          bool
 			that          *ipNet
-			srcRange, prt *Proto
+			srcRange, prt *proto
 			log           string
 		}
 		groupRuleTree := make(map[key]map[*ipNet]*Rule)
@@ -1203,12 +1203,12 @@ func addFinalPermitDenyRule(aclInfo *ACLInfo, addDeny, addPermit bool) {
 
 // Returns iptables code for filtering a protocol.
 func iptablesPrtCode(srcRangeNode, prtNode *PrtBintree) string {
-	prt := &prtNode.Proto
-	proto := prt.proto
-	result := "-p " + proto
-	switch proto {
+	prt := &prtNode.proto
+	protocol := prt.protocol
+	result := "-p " + protocol
+	switch protocol {
 	case "tcp", "udp":
-		portCode := func(rangeObj *Proto) string {
+		portCode := func(rangeObj *proto) string {
 			ports := rangeObj.ports
 			v1, v2 := ports[0], ports[1]
 			if v1 == v2 {
@@ -1224,7 +1224,7 @@ func iptablesPrtCode(srcRangeNode, prtNode *PrtBintree) string {
 			}
 		}
 		if srcRangeNode != nil {
-			if sport := portCode(&srcRangeNode.Proto); sport != "" {
+			if sport := portCode(&srcRangeNode.proto); sport != "" {
 				result += " --sport " + sport
 			}
 		}
@@ -1460,7 +1460,7 @@ func (tree *NetBintree) Noop() bool { return tree.noop }
 // for optimization.
 
 type PrtBintree struct {
-	Proto
+	proto
 	subtree NPBintree
 	hi      *PrtBintree
 	lo      *PrtBintree
@@ -1469,20 +1469,20 @@ type PrtBintree struct {
 }
 
 func genPrtBintree(
-	elements []*Proto,
+	elements []*proto,
 	tree LruleTree,
 	tree2bintree map[*LruleTree]NPBintree) *PrtBintree {
-	var ipPrt *Proto
-	topPrt := make(map[string][]*Proto)
-	subPrt := make(map[*Proto][]*Proto)
+	var ipPrt *proto
+	topPrt := make(map[string][]*proto)
+	subPrt := make(map[*proto][]*proto)
 
 	// Add all protocols directly below protocol 'ip' into map topPrt
 	// grouped by protocol. Add protocols below top protocols or below
 	// other protocols of current set of protocols to map subPrt.
 PRT:
 	for _, prt := range elements {
-		proto := prt.proto
-		if proto == "ip" {
+		protocol := prt.protocol
+		if protocol == "ip" {
 			ipPrt = prt
 			continue PRT
 		}
@@ -1507,10 +1507,10 @@ PRT:
 
 		// Not a sub protocol (except possibly of IP).
 		var key string
-		if _, err := strconv.ParseUint(proto, 10, 16); err == nil {
+		if _, err := strconv.ParseUint(protocol, 10, 16); err == nil {
 			key = "proto"
 		} else {
-			key = proto
+			key = protocol
 		}
 		topPrt[key] = append(topPrt[key], prt)
 	}
@@ -1522,9 +1522,9 @@ PRT:
 	//
 	// We need not to handle 'tcp established' because it is only used
 	// for stateless routers, but iptables is stateful.
-	var genLohitrees func(prtAref []*Proto) (*PrtBintree, *PrtBintree)
-	var genRangetree func(prtAref []*Proto) *PrtBintree
-	genLohitrees = func(prtAref []*Proto) (*PrtBintree, *PrtBintree) {
+	var genLohitrees func(prtAref []*proto) (*PrtBintree, *PrtBintree)
+	var genRangetree func(prtAref []*proto) *PrtBintree
+	genLohitrees = func(prtAref []*proto) (*PrtBintree, *PrtBintree) {
 		switch len(prtAref) {
 		case 0:
 			return nil, nil
@@ -1532,14 +1532,14 @@ PRT:
 			prt := prtAref[0]
 			lo, hi := genLohitrees(subPrt[prt])
 			node := &PrtBintree{
-				Proto:   *prt,
+				proto:   *prt,
 				subtree: tree2bintree[tree[prt]],
 				lo:      lo,
 				hi:      hi,
 			}
 			return node, nil
 		default:
-			ports := make([]*Proto, len(prtAref))
+			ports := make([]*proto, len(prtAref))
 			copy(ports, prtAref)
 			sort.Slice(ports, func(i, j int) bool {
 				return ports[i].ports[0] < ports[j].ports[0]
@@ -1552,7 +1552,7 @@ PRT:
 			return genRangetree(left), genRangetree(right)
 		}
 	}
-	genRangetree = func(prtAref []*Proto) *PrtBintree {
+	genRangetree = func(prtAref []*proto) *PrtBintree {
 		lo, hi := genLohitrees(prtAref)
 		if hi == nil {
 			return lo
@@ -1577,7 +1577,7 @@ PRT:
 				//		debug("Merged: $lo->{range}->[0]-$lo->{range}->[1]",
 				//		      " $hi->{range}->[0]-$hi->{range}->[1]");
 				node := &PrtBintree{
-					Proto:   prt,
+					proto:   prt,
 					subtree: lo.subtree,
 				}
 				if len(hilo) > 0 {
@@ -1590,7 +1590,7 @@ PRT:
 			}
 		}
 		return &PrtBintree{
-			Proto: prt,
+			proto: prt,
 			lo:    lo,
 			hi:    hi,
 		}
@@ -1604,18 +1604,18 @@ PRT:
 	// Add single nodes for numeric protocols.
 	if aref, ok := topPrt["proto"]; ok {
 		sort.Slice(aref, func(i, j int) bool {
-			return aref[i].proto < aref[j].proto
+			return aref[i].protocol < aref[j].protocol
 		})
 		for _, prt := range aref {
-			node := &PrtBintree{Proto: *prt, subtree: tree2bintree[tree[prt]]}
+			node := &PrtBintree{proto: *prt, subtree: tree2bintree[tree[prt]]}
 			seq = append(seq, node)
 		}
 	}
 
 	// Build subtree of icmp protocols.
 	if icmpAref, ok := topPrt["icmp"]; ok {
-		type2prt := make(map[int][]*Proto)
-		var icmpAny *Proto
+		type2prt := make(map[int][]*proto)
+		var icmpAny *proto
 
 		// If one protocol is 'icmp any' it is the only top protocol,
 		// all other icmp protocols are sub protocols.
@@ -1634,14 +1634,14 @@ PRT:
 		// Parameter is array of icmp protocols all having
 		// the same type and different but defined code.
 		// Return reference to array of nodes sorted by code.
-		genIcmpTypeCodeSorted := func(aref []*Proto) []*PrtBintree {
+		genIcmpTypeCodeSorted := func(aref []*proto) []*PrtBintree {
 			sort.Slice(aref, func(i, j int) bool {
 				return aref[i].icmpCode < aref[j].icmpCode
 			})
 			result := make([]*PrtBintree, len(aref))
 			for i, proto := range aref {
 				result[i] = &PrtBintree{
-					Proto:   *proto,
+					proto:   *proto,
 					subtree: tree2bintree[tree[proto]],
 				}
 			}
@@ -1668,7 +1668,7 @@ PRT:
 
 				// Add a node 'icmp type any' as root.
 				node2 = &PrtBintree{
-					Proto: Proto{proto: "icmp", icmpType: icmpType, icmpCode: -1},
+					proto: proto{protocol: "icmp", icmpType: icmpType, icmpCode: -1},
 					seq:   seq3,
 				}
 			} else {
@@ -1676,7 +1676,7 @@ PRT:
 				// One protocol 'icmp type any'.
 				prt := aref2[0]
 				node2 = &PrtBintree{
-					Proto:   *prt,
+					proto:   *prt,
 					subtree: tree2bintree[tree[prt]],
 				}
 				if aref3, ok := subPrt[prt]; ok {
@@ -1690,13 +1690,13 @@ PRT:
 		var node *PrtBintree
 		if icmpAny != nil {
 			node = &PrtBintree{
-				Proto:   *icmpAny,
+				proto:   *icmpAny,
 				seq:     seq2,
 				subtree: tree2bintree[tree[icmpAny]],
 			}
 		} else if len(seq2) > 1 {
 			node = &PrtBintree{
-				Proto: Proto{proto: "icmp", icmpType: -1, icmpCode: -1},
+				proto: proto{protocol: "icmp", icmpType: -1, icmpCode: -1},
 				seq:   seq2,
 			}
 		} else {
@@ -1709,19 +1709,19 @@ PRT:
 	var bintree *PrtBintree
 	if ipPrt != nil {
 		bintree = &PrtBintree{
-			Proto:   *ipPrt,
+			proto:   *ipPrt,
 			seq:     seq,
 			subtree: tree2bintree[tree[ipPrt]],
 		}
 	} else if len(seq) > 1 {
-		bintree = &PrtBintree{Proto: Proto{proto: "ip"}, seq: seq}
+		bintree = &PrtBintree{proto: proto{protocol: "ip"}, seq: seq}
 	} else {
 		bintree = seq[0]
 	}
 
 	// Add attribute {noop} to node which doesn't need any test in
 	// generated chain.
-	if bintree.proto == "ip" {
+	if bintree.protocol == "ip" {
 		bintree.noop = true
 	}
 	return bintree
@@ -1797,7 +1797,7 @@ func findChains(aclInfo *ACLInfo, routerData *RouterData) {
 	for _, rule := range rules {
 		srcRange := rule.srcRange
 		if srcRange == nil {
-			switch rule.prt.proto {
+			switch rule.prt.protocol {
 			case "tcp":
 				srcRange = prtTCP
 			case "udp":
@@ -1848,10 +1848,10 @@ func findChains(aclInfo *ACLInfo, routerData *RouterData) {
 			// (binary) tree. This is used later to convert subsequent tests
 			// for ip/mask or port ranges into more efficient nested chains.
 			return genAddrBintree(elements, *tree, subtree2bintree)
-		case *Proto:
-			elements := make([]*Proto, 0, len(*tree))
+		case *proto:
+			elements := make([]*proto, 0, len(*tree))
 			for key := range *tree {
-				elements = append(elements, key.(*Proto))
+				elements = append(elements, key.(*proto))
 			}
 			return genPrtBintree(elements, *tree, subtree2bintree)
 		}
@@ -2167,17 +2167,17 @@ func findChains(aclInfo *ACLInfo, routerData *RouterData) {
 			prt := rule.prt
 			srcRange := rule.srcRange
 			if prt == nil && srcRange == nil {
-				rule.prt = &PrtBintree{Proto: *prtIP}
+				rule.prt = &PrtBintree{proto: *prtIP}
 			} else if prt == nil {
-				switch srcRange.proto {
+				switch srcRange.protocol {
 				case "tcp":
-					rule.prt = &PrtBintree{Proto: *prtTCP}
+					rule.prt = &PrtBintree{proto: *prtTCP}
 				case "udp":
-					rule.prt = &PrtBintree{Proto: *prtUDP}
+					rule.prt = &PrtBintree{proto: *prtUDP}
 				case "icmp":
-					rule.prt = &PrtBintree{Proto: *prtIcmp}
+					rule.prt = &PrtBintree{proto: *prtIcmp}
 				default:
-					rule.prt = &PrtBintree{Proto: *prtIP}
+					rule.prt = &PrtBintree{proto: *prtIP}
 				}
 			}
 		}
@@ -2256,22 +2256,22 @@ func printChains(fd *os.File, routerData *RouterData) {
 			switch {
 			case srcRange == nil && prt == nil:
 				// break
-			case prt != nil && prt.Proto.proto == "ip":
+			case prt != nil && prt.protocol == "ip":
 				// break
 			case prt == nil:
-				if srcRange.Proto.proto == "ip" {
+				if srcRange.protocol == "ip" {
 					break
 				}
 				prt = new(PrtBintree)
-				switch srcRange.Proto.proto {
+				switch srcRange.protocol {
 				case "tcp":
-					prt.Proto = *prtTCP
+					prt.proto = *prtTCP
 				case "udp":
-					prt.Proto = *prtUDP
+					prt.proto = *prtUDP
 				case "icmp":
-					prt.Proto = *prtIcmp
+					prt.proto = *prtIcmp
 				default:
-					prt.Proto = *prtIP
+					prt.proto = *prtIP
 				}
 				fallthrough
 			default:
@@ -2300,7 +2300,7 @@ func iptablesACLLine(fd *os.File, rule *LinuxRule, prefix string) {
 	if size, _ := dst.Mask.Size(); size != 0 {
 		result += " -d " + prefixCode(&dst.ipNet)
 	}
-	if prt.proto != "ip" {
+	if prt.protocol != "ip" {
 		result += " " + iptablesPrtCode(srcRange, prt)
 	}
 	fmt.Fprintln(fd, result)
@@ -2325,7 +2325,7 @@ func convertRuleObjects(rules []*jRule, ipNet2obj name2ipNet, prt2obj name2Proto
 		srcList := ipNetList(rule.Src, ipNet2obj)
 		dstList := ipNetList(rule.Dst, ipNet2obj)
 		prtList := prtList(rule.Prt, prt2obj)
-		var srcRange *Proto
+		var srcRange *proto
 		if rule.SrcRange != "" {
 			srcRange = prt(rule.SrcRange, prt2obj)
 		}
@@ -2375,7 +2375,7 @@ func ipNetList(names []string, ipNet2obj name2ipNet) []*ipNet {
 	return result
 }
 
-func prt(name string, prt2obj name2Proto) *Proto {
+func prt(name string, prt2obj name2Proto) *proto {
 	obj, ok := prt2obj[name]
 	if !ok {
 		obj = createPrtObj(name)
@@ -2384,8 +2384,8 @@ func prt(name string, prt2obj name2Proto) *Proto {
 	return obj
 }
 
-func prtList(names []string, prt2obj name2Proto) []*Proto {
-	result := make([]*Proto, len(names))
+func prtList(names []string, prt2obj name2Proto) []*proto {
+	result := make([]*proto, len(names))
 	for i, name := range names {
 		result[i] = prt(name, prt2obj)
 	}
@@ -2614,14 +2614,14 @@ func printObjectGroups(fd *os.File, aclInfo *ACLInfo, model string) {
 
 // Returns 3 values for building a Cisco ACL:
 // permit <val1> <src> <val2> <dst> <val3>
-func ciscoPrtCode(srcRange, prt *Proto) (t1, t2, t3 string) {
-	proto := prt.proto
+func ciscoPrtCode(srcRange, prt *proto) (t1, t2, t3 string) {
+	protocol := prt.protocol
 
-	switch proto {
+	switch protocol {
 	case "ip":
 		return "ip", "", ""
 	case "tcp", "udp":
-		portCode := func(rangeObj *Proto) string {
+		portCode := func(rangeObj *proto) string {
 			ports := rangeObj.ports
 			v1, v2 := ports[0], ports[1]
 			if v1 == v2 {
@@ -2648,21 +2648,21 @@ func ciscoPrtCode(srcRange, prt *Proto) (t1, t2, t3 string) {
 		if srcRange != nil {
 			srcPrt = portCode(srcRange)
 		}
-		return proto, srcPrt, dstPrt
+		return protocol, srcPrt, dstPrt
 	case "icmp":
 		icmpType := prt.icmpType
 		if icmpType != -1 {
 			code := prt.icmpCode
 			if code != -1 {
-				return proto, "", fmt.Sprint(icmpType, code)
+				return protocol, "", fmt.Sprint(icmpType, code)
 			} else {
-				return proto, "", fmt.Sprint(icmpType)
+				return protocol, "", fmt.Sprint(icmpType)
 			}
 		} else {
-			return proto, "", ""
+			return protocol, "", ""
 		}
 	default:
-		return proto, "", ""
+		return protocol, "", ""
 	}
 }
 
