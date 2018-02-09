@@ -39,6 +39,7 @@ import (
 	"strings"
 )
 
+// Config holds program flags.
 type Config struct {
 	concurrent int
 	pipe       bool
@@ -78,13 +79,13 @@ func diagMsg(msg string) {
 	}
 }
 
-type IPNet struct {
+type ipNet struct {
 	*net.IPNet
-	optNetworks             *IPNet
+	optNetworks             *ipNet
 	noOptAddrs, needProtect bool
 	name                    string
-	up                      *IPNet
-	isSupernetOfNeedProtect map[*IPNet]bool
+	up                      *ipNet
+	isSupernetOfNeedProtect map[*ipNet]bool
 }
 type Proto struct {
 	proto       string
@@ -96,20 +97,20 @@ type Proto struct {
 	up          *Proto
 	hasNeighbor bool
 }
-type Name2IPNet map[string]*IPNet
-type Name2Proto map[string]*Proto
+type name2ipNet map[string]*ipNet
+type name2Proto map[string]*Proto
 
-func createIPObj(ipNet string) *IPNet {
-	_, net, _ := net.ParseCIDR(ipNet)
-	return &IPNet{IPNet: net, name: ipNet}
+func createIPObj(ipNetName string) *ipNet {
+	_, net, _ := net.ParseCIDR(ipNetName)
+	return &ipNet{IPNet: net, name: ipNetName}
 }
 
-func getIPObj(ip net.IP, mask net.IPMask, ipNet2obj Name2IPNet) *IPNet {
+func getIPObj(ip net.IP, mask net.IPMask, ipNet2obj name2ipNet) *ipNet {
 	prefix, _ := mask.Size()
 	name := fmt.Sprintf("%s/%d", ip.String(), prefix)
 	obj, ok := ipNet2obj[name]
 	if !ok {
-		obj = &IPNet{IPNet: &net.IPNet{IP: ip, Mask: mask}, name: name}
+		obj = &ipNet{IPNet: &net.IPNet{IP: ip, Mask: mask}, name: name}
 		ipNet2obj[name] = obj
 	}
 	return obj
@@ -153,19 +154,19 @@ func getNet00Addr(ipv6 bool) string {
 	return result
 }
 
-func setupIPNetRelation(ipNet2obj Name2IPNet, ipv6 bool) {
+func setupIPNetRelation(ipNet2obj name2ipNet, ipv6 bool) {
 	net00 := getNet00Addr(ipv6)
 	if _, ok := ipNet2obj[net00]; !ok {
 		ipNet2obj[net00] = createIPObj(net00)
 	}
-	maskIPHash := make(map[string]map[string]*IPNet)
+	maskIPHash := make(map[string]map[string]*ipNet)
 
 	// Collect networks into maskIPHash.
 	for _, network := range ipNet2obj {
 		ip, mask := network.IP, network.Mask
 		ipMap, ok := maskIPHash[string(mask)]
 		if !ok {
-			ipMap = make(map[string]*IPNet)
+			ipMap = make(map[string]*ipNet)
 			maskIPHash[string(mask)] = ipMap
 		}
 		ipMap[string(ip)] = network
@@ -222,12 +223,12 @@ func setupIPNetRelation(ipNet2obj Name2IPNet, ipv6 bool) {
 	}
 }
 
-func markSupernetsOfNeedProtect(needProtect []*IPNet) {
+func markSupernetsOfNeedProtect(needProtect []*ipNet) {
 	for _, intf := range needProtect {
 		up := intf.up
 		for up != nil {
 			if up.isSupernetOfNeedProtect == nil {
-				up.isSupernetOfNeedProtect = make(map[*IPNet]bool)
+				up.isSupernetOfNeedProtect = make(map[*ipNet]bool)
 			}
 			up.isSupernetOfNeedProtect[intf] = true
 			up = up.up
@@ -236,7 +237,7 @@ func markSupernetsOfNeedProtect(needProtect []*IPNet) {
 }
 
 // Needed for model=Linux.
-func addTCPUDPIcmp(prt2obj Name2Proto) {
+func addTCPUDPIcmp(prt2obj name2Proto) {
 	_ = prt("tcp 1 65535", prt2obj)
 	_ = prt("udp 1 65535", prt2obj)
 	_ = prt("icmp", prt2obj)
@@ -247,7 +248,7 @@ func addTCPUDPIcmp(prt2obj Name2Proto) {
 // If no including range is found, link it with next larger protocol.
 // Set attribute {hasNeighbor} to range adjacent to upper port.
 // Abort on overlapping ranges.
-func orderRanges(proto string, prt2obj Name2Proto, up *Proto) {
+func orderRanges(proto string, prt2obj name2Proto, up *Proto) {
 	var ranges []*Proto
 	for _, v := range prt2obj {
 		if v.proto == proto && !v.established {
@@ -342,7 +343,7 @@ func orderRanges(proto string, prt2obj Name2Proto, up *Proto) {
 	}
 }
 
-func setupPrtRelation(prt2obj Name2Proto) {
+func setupPrtRelation(prt2obj name2Proto) {
 	prtIP := prt("ip", prt2obj)
 	icmpUp, ok := prt2obj["icmp"]
 	if !ok {
@@ -459,7 +460,7 @@ func optimizeRedundantRules(cmpHash, chgHash RuleTree) bool {
 
 type Rule struct {
 	deny          bool
-	src, dst      *IPNet
+	src, dst      *ipNet
 	prt, srcRange *Proto
 	log           string
 	deleted       bool
@@ -475,12 +476,12 @@ func (rules *Rules) push(rule *Rule) {
 // Build rule tree from nested maps.
 // Leaf nodes have rules as values.
 type RuleTree1 map[*Proto]*Rule
-type RuleTree2 map[*IPNet]RuleTree1
-type RuleTree3 map[*IPNet]RuleTree2
+type RuleTree2 map[*ipNet]RuleTree1
+type RuleTree3 map[*ipNet]RuleTree2
 type RuleTree4 map[*Proto]RuleTree3
 type RuleTree map[bool]RuleTree4
 
-func (tree RuleTree2) add(dst *IPNet) RuleTree1 {
+func (tree RuleTree2) add(dst *ipNet) RuleTree1 {
 	subtree, found := tree[dst]
 	if !found {
 		subtree = make(RuleTree1)
@@ -488,7 +489,7 @@ func (tree RuleTree2) add(dst *IPNet) RuleTree1 {
 	}
 	return subtree
 }
-func (tree RuleTree3) add(src *IPNet) RuleTree2 {
+func (tree RuleTree3) add(src *ipNet) RuleTree2 {
 	subtree, found := tree[src]
 	if !found {
 		subtree = make(RuleTree2)
@@ -617,10 +618,10 @@ func optimizeRules(rules Rules, aclInfo *ACLInfo) Rules {
 }
 
 // Join adjacent port ranges.
-func joinRanges(rules Rules, prt2obj Name2Proto) Rules {
+func joinRanges(rules Rules, prt2obj name2Proto) Rules {
 	type key struct {
 		deny       bool
-		src, dst   *IPNet
+		src, dst   *ipNet
 		srcRange   *Proto
 		log, proto string
 	}
@@ -721,11 +722,11 @@ type ACLInfo struct {
 	isStdACL                                         bool
 	intfRules, rules                                 Rules
 	lrules                                           LinuxRules
-	prt2obj                                          Name2Proto
-	ipNet2obj                                        Name2IPNet
-	filterOnly, optNetworks, noOptAddrs, needProtect []*IPNet
+	prt2obj                                          name2Proto
+	ipNet2obj                                        name2ipNet
+	filterOnly, optNetworks, noOptAddrs, needProtect []*ipNet
 	filterAnySrc                                     bool
-	network00                                        *IPNet
+	network00                                        *ipNet
 	prtIP                                            *Proto
 	objectGroups                                     []*ObjGroup
 }
@@ -742,7 +743,7 @@ type ACLInfo struct {
 // Otherwise the connection may be lost,
 // - if the device is accessed over an IPSec tunnel
 // - and we change the ACL incrementally.
-func moveRulesEspAh(rules Rules, prt2obj Name2Proto, hasLog bool) Rules {
+func moveRulesEspAh(rules Rules, prt2obj name2Proto, hasLog bool) Rules {
 	prtEsp := prt2obj["50"]
 	prtAh := prt2obj["51"]
 	if prtEsp == nil && prtAh == nil && !hasLog {
@@ -763,7 +764,7 @@ func moveRulesEspAh(rules Rules, prt2obj Name2Proto, hasLog bool) Rules {
 	}
 
 	// Sort crypto rules.
-	cmpAddr := func(a, b *IPNet) int {
+	cmpAddr := func(a, b *ipNet) int {
 		if val := bytes.Compare(a.IP, b.IP); val != 0 {
 			return val
 		}
@@ -789,9 +790,9 @@ func moveRulesEspAh(rules Rules, prt2obj Name2Proto, hasLog bool) Rules {
 	return append(denyRules, append(cryptoRules, permitRules...)...)
 }
 
-func createGroup(elements []*IPNet, aclInfo *ACLInfo, routerData *RouterData) *ObjGroup {
+func createGroup(elements []*ipNet, aclInfo *ACLInfo, routerData *RouterData) *ObjGroup {
 	name := fmt.Sprintf("g%d", routerData.objGroupCounter)
-	groupRef := &IPNet{IPNet: nil, name: name}
+	groupRef := &ipNet{IPNet: nil, name: name}
 	group := &ObjGroup{
 		name:     name,
 		elements: elements,
@@ -808,15 +809,15 @@ func createGroup(elements []*IPNet, aclInfo *ACLInfo, routerData *RouterData) *O
 func addLocalDenyRules(aclInfo *ACLInfo, routerData *RouterData) {
 	network00, prtIP := aclInfo.network00, aclInfo.prtIP
 	filterOnly := aclInfo.filterOnly
-	var srcNetworks []*IPNet
+	var srcNetworks []*ipNet
 	if aclInfo.filterAnySrc {
-		srcNetworks = []*IPNet{network00}
+		srcNetworks = []*ipNet{network00}
 	} else {
 		srcNetworks = filterOnly
 	}
 
 	if routerData.doObjectgroup {
-		groupOrSingle := func(objList []*IPNet) *IPNet {
+		groupOrSingle := func(objList []*ipNet) *ipNet {
 			if len(objList) == 1 {
 				return objList[0]
 			} else if routerData.filterOnlyGroup != nil {
@@ -860,13 +861,13 @@ func addLocalDenyRules(aclInfo *ACLInfo, routerData *RouterData) {
               IP/mask objects.
               Parameter $hash is changed to reflect combined IP/mask objects.
 */
-func combineAdjacentIPMask(hash map[*IPNet]*Rule, ipNet2obj Name2IPNet) []*IPNet {
+func combineAdjacentIPMask(hash map[*ipNet]*Rule, ipNet2obj name2ipNet) []*ipNet {
 
 	// Take objects from keys of map.
 	// Sort by IP address. Adjacent networks will be adjacent elements then.
 	// Precondition is, that list already has been optimized and
 	// therefore has no redundant elements.
-	elements := make([]*IPNet, 0, len(hash))
+	elements := make([]*ipNet, 0, len(hash))
 	for element := range hash {
 		elements = append(elements, element)
 	}
@@ -931,8 +932,8 @@ const minObjectGroupSize = 2
 
 type ObjGroup struct {
 	name     string
-	elements []*IPNet
-	ref      *IPNet
+	elements []*ipNet
+	ref      *ipNet
 	hash     map[string]bool
 }
 
@@ -960,11 +961,11 @@ func findObjectgroups(aclInfo *ACLInfo, routerData *RouterData) {
 	for _, thisIsDst := range []bool{false, true} {
 		type key struct {
 			deny          bool
-			that          *IPNet
+			that          *ipNet
 			srcRange, prt *Proto
 			log           string
 		}
-		groupRuleTree := make(map[key]map[*IPNet]*Rule)
+		groupRuleTree := make(map[key]map[*ipNet]*Rule)
 
 		// Find groups of rules with identical
 		// deny, srcRange, prt, log, src/dst and different dst/src.
@@ -981,7 +982,7 @@ func findObjectgroups(aclInfo *ACLInfo, routerData *RouterData) {
 			k := key{deny, that, srcRange, prt, log}
 			href, ok := groupRuleTree[k]
 			if !ok {
-				href = make(map[*IPNet]*Rule)
+				href = make(map[*ipNet]*Rule)
 				groupRuleTree[k] = href
 			}
 			href[this] = rule
@@ -995,7 +996,7 @@ func findObjectgroups(aclInfo *ACLInfo, routerData *RouterData) {
 			active bool
 
 			// object-key => rule, ...
-			hash map[*IPNet]*Rule
+			hash map[*ipNet]*Rule
 		}
 		groupGlue := make(map[*Rule]*glueType)
 		for _, href := range groupRuleTree {
@@ -1018,8 +1019,8 @@ func findObjectgroups(aclInfo *ACLInfo, routerData *RouterData) {
 		// Find group with identical elements
 		// or define a new one
 		// or return combined network.
-		// Returns IPNet object with empty IP, representing a group.
-		getGroup := func(hash map[*IPNet]*Rule) *IPNet {
+		// Returns ipNet object with empty IP, representing a group.
+		getGroup := func(hash map[*ipNet]*Rule) *ipNet {
 
 			// Get sorted and combined list of objects from hash of objects.
 			// Hash is adjusted, if objects are combined.
@@ -1104,7 +1105,7 @@ func addProtectRules(aclInfo *ACLInfo, hasFinalPermit bool) {
 	// To be added deny rule is needless if there is a rule which
 	// permits any traffic to the interface.
 	// This permit rule can be deleted if there is a permit any any rule.
-	noProtect := make(map[*IPNet]bool)
+	noProtect := make(map[*ipNet]bool)
 	var deleted int
 	rules := aclInfo.intfRules
 	for i, rule := range rules {
@@ -1139,7 +1140,7 @@ func addProtectRules(aclInfo *ACLInfo, hasFinalPermit bool) {
 
 	// Deny rule is needless if there is no such permit rule.
 	// Try to optimize this case.
-	protectMap := make(map[*IPNet]bool)
+	protectMap := make(map[*ipNet]bool)
 	for _, rule := range aclInfo.rules {
 		if rule.deny {
 			continue
@@ -1271,7 +1272,7 @@ func debugBintree (tree *NetBintree, depth string) {
 type LruleTree map[NetOrProt]*LruleTree
 
 type NetBintree struct {
-	IPNet
+	ipNet
 	subtree NPBintree
 	hi      *NetBintree
 	lo      *NetBintree
@@ -1330,7 +1331,7 @@ func addBintree(tree *NetBintree, node *NetBintree) *NetBintree {
 			}
 		}
 		result = &NetBintree{
-			IPNet: IPNet{
+			ipNet: ipNet{
 				IPNet: &net.IPNet{IP: nodeIP.Mask(treeMask), Mask: treeMask}},
 		}
 		if bytes.Compare(nodeIP, treeIP) < 0 {
@@ -1376,7 +1377,7 @@ type NetOrProt interface {
 
 // Build a binary tree for src/dst objects.
 func genAddrBintree(
-	elements []*IPNet,
+	elements []*ipNet,
 	tree LruleTree,
 	tree2bintree map[*LruleTree]NPBintree) *NetBintree {
 
@@ -1385,7 +1386,7 @@ func genAddrBintree(
 	nodes := make([]*NetBintree, len(elements))
 	for i, elem := range elements {
 		nodes[i] = &NetBintree{
-			IPNet:   *elem,
+			ipNet:   *elem,
 			subtree: tree2bintree[tree[elem]],
 		}
 	}
@@ -1837,10 +1838,10 @@ func findChains(aclInfo *ACLInfo, routerData *RouterData) {
 			break
 		}
 		switch elem1.(type) {
-		case *IPNet:
-			elements := make([]*IPNet, 0, len(*tree))
+		case *ipNet:
+			elements := make([]*ipNet, 0, len(*tree))
 			for key := range *tree {
-				elements = append(elements, key.(*IPNet))
+				elements = append(elements, key.(*ipNet))
 			}
 
 			// Put prt/src/dst objects at the root of some subtree into a
@@ -2158,10 +2159,10 @@ func findChains(aclInfo *ACLInfo, routerData *RouterData) {
 		// with no-op values.
 		for _, rule := range result {
 			if rule.src == nil {
-				rule.src = &NetBintree{IPNet: *network00}
+				rule.src = &NetBintree{ipNet: *network00}
 			}
 			if rule.dst == nil {
-				rule.dst = &NetBintree{IPNet: *network00}
+				rule.dst = &NetBintree{ipNet: *network00}
 			}
 			prt := rule.prt
 			srcRange := rule.srcRange
@@ -2187,7 +2188,7 @@ func findChains(aclInfo *ACLInfo, routerData *RouterData) {
 
 // Given an IP and mask, return its address
 // as "x.x.x.x/x" or "x.x.x.x" if prefix == 32 (128 for IPv6).
-func prefixCode(ipNet *IPNet) string {
+func prefixCode(ipNet *ipNet) string {
 	size, bits := ipNet.Mask.Size()
 	if size == bits {
 		return ipNet.IP.String()
@@ -2242,12 +2243,12 @@ func printChains(fd *os.File, routerData *RouterData) {
 			result := fmt.Sprintf("%s %s", jump, actionCode(rule))
 			if src := rule.src; src != nil {
 				if size, _ := src.Mask.Size(); size != 0 {
-					result += " -s " + prefixCode(&src.IPNet)
+					result += " -s " + prefixCode(&src.ipNet)
 				}
 			}
 			if dst := rule.dst; dst != nil {
 				if size, _ := dst.Mask.Size(); size != 0 {
-					result += " -d " + prefixCode(&dst.IPNet)
+					result += " -d " + prefixCode(&dst.ipNet)
 				}
 			}
 			srcRange := rule.srcRange
@@ -2294,10 +2295,10 @@ func iptablesACLLine(fd *os.File, rule *LinuxRule, prefix string) {
 	}
 	result := fmt.Sprintf("%s %s %s", prefix, jump, actionCode(rule))
 	if size, _ := src.Mask.Size(); size != 0 {
-		result += " -s " + prefixCode(&src.IPNet)
+		result += " -s " + prefixCode(&src.ipNet)
 	}
 	if size, _ := dst.Mask.Size(); size != 0 {
-		result += " -d " + prefixCode(&dst.IPNet)
+		result += " -d " + prefixCode(&dst.ipNet)
 	}
 	if prt.proto != "ip" {
 		result += " " + iptablesPrtCode(srcRange, prt)
@@ -2314,7 +2315,7 @@ func printIptablesACL(fd *os.File, aclInfo *ACLInfo) {
 	}
 }
 
-func convertRuleObjects(rules []*jRule, ipNet2obj Name2IPNet, prt2obj Name2Proto) (Rules, bool) {
+func convertRuleObjects(rules []*jRule, ipNet2obj name2ipNet, prt2obj name2Proto) (Rules, bool) {
 	if rules == nil {
 		return nil, false
 	}
@@ -2353,7 +2354,7 @@ type RouterData struct {
 	model           string
 	acls            []*ACLInfo
 	logDeny         string
-	filterOnlyGroup *IPNet
+	filterOnlyGroup *ipNet
 	doObjectgroup   bool
 	objGroupsHash   map[groupKey][]*ObjGroup
 	objGroupCounter int
@@ -2361,8 +2362,8 @@ type RouterData struct {
 	chains          []*Chain
 }
 
-func ipNetList(names []string, ipNet2obj Name2IPNet) []*IPNet {
-	result := make([]*IPNet, len(names))
+func ipNetList(names []string, ipNet2obj name2ipNet) []*ipNet {
+	result := make([]*ipNet, len(names))
 	for i, name := range names {
 		obj, ok := ipNet2obj[name]
 		if !ok {
@@ -2374,7 +2375,7 @@ func ipNetList(names []string, ipNet2obj Name2IPNet) []*IPNet {
 	return result
 }
 
-func prt(name string, prt2obj Name2Proto) *Proto {
+func prt(name string, prt2obj name2Proto) *Proto {
 	obj, ok := prt2obj[name]
 	if !ok {
 		obj = createPrtObj(name)
@@ -2383,7 +2384,7 @@ func prt(name string, prt2obj Name2Proto) *Proto {
 	return obj
 }
 
-func prtList(names []string, prt2obj Name2Proto) []*Proto {
+func prtList(names []string, prt2obj name2Proto) []*Proto {
 	result := make([]*Proto, len(names))
 	for i, name := range names {
 		result[i] = prt(name, prt2obj)
@@ -2447,8 +2448,8 @@ func prepareACLs(path string) *RouterData {
 
 		// Process networks and protocols of each interface individually,
 		// because relation between networks may be changed by NAT.
-		ipNet2obj := make(Name2IPNet)
-		prt2obj := make(Name2Proto)
+		ipNet2obj := make(name2ipNet)
+		prt2obj := make(name2Proto)
 
 		intfRules, hasLog1 := convertRuleObjects(
 			rawInfo.IntfRules, ipNet2obj, prt2obj)
@@ -2530,7 +2531,7 @@ func prepareACLs(path string) *RouterData {
 }
 
 // Given IP or group object, return its address in Cisco syntax.
-func ciscoACLAddr(obj *IPNet, model string) string {
+func ciscoACLAddr(obj *ipNet, model string) string {
 
 	// Object group.
 	if obj.IPNet == nil {
