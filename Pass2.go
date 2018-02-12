@@ -458,7 +458,7 @@ func optimizeRedundantRules(cmpHash, chgHash ruleTree) bool {
 	return changed
 }
 
-type Rule struct {
+type ciscoRule struct {
 	deny          bool
 	src, dst      *ipNet
 	prt, srcRange *proto
@@ -467,15 +467,15 @@ type Rule struct {
 	optSecondary  bool
 }
 
-type Rules []*Rule
+type ciscoRules []*ciscoRule
 
-func (rules *Rules) push(rule *Rule) {
+func (rules *ciscoRules) push(rule *ciscoRule) {
 	*rules = append(*rules, rule)
 }
 
 // Build rule tree from nested maps.
 // Leaf nodes have rules as values.
-type ruleTree1 map[*proto]*Rule
+type ruleTree1 map[*proto]*ciscoRule
 type ruleTree2 map[*ipNet]ruleTree1
 type ruleTree3 map[*ipNet]ruleTree2
 type ruleTree4 map[*proto]ruleTree3
@@ -533,12 +533,12 @@ func dynTree(tree interface{}, keys ...interface{}) interface{} {
 }
 */
 
-func optimizeRules(rules Rules, aclInfo *aclInfo) Rules {
+func optimizeRules(rules ciscoRules, aclInfo *aclInfo) ciscoRules {
 	prtIP := aclInfo.prt2obj["ip"]
 	changed := false
 
 	// Add rule to rule tree.
-	addRule := func(ruleTree ruleTree, rule *Rule) {
+	addRule := func(ruleTree ruleTree, rule *ciscoRule) {
 		srcRange := rule.srcRange
 		if srcRange == nil {
 			srcRange = prtIP
@@ -605,7 +605,7 @@ func optimizeRules(rules Rules, aclInfo *aclInfo) Rules {
 	}
 
 	if changed {
-		newRules := make(Rules, 0)
+		newRules := make(ciscoRules, 0)
 		for _, rule := range rules {
 			if rule.deleted {
 				continue
@@ -618,7 +618,7 @@ func optimizeRules(rules Rules, aclInfo *aclInfo) Rules {
 }
 
 // Join adjacent port ranges.
-func joinRanges(rules Rules, prt2obj name2Proto) Rules {
+func joinRanges(rules ciscoRules, prt2obj name2Proto) ciscoRules {
 	type key struct {
 		deny       bool
 		src, dst   *ipNet
@@ -626,7 +626,7 @@ func joinRanges(rules Rules, prt2obj name2Proto) Rules {
 		log, proto string
 	}
 	changed := false
-	key2rules := make(map[key]Rules)
+	key2rules := make(map[key]ciscoRules)
 	for _, rule := range rules {
 
 		// Only ranges which have a neighbor may be successfully optimized.
@@ -644,7 +644,7 @@ func joinRanges(rules Rules, prt2obj name2Proto) Rules {
 		key2rules[k] = append(key2rules[k], rule)
 	}
 
-	rule2range := make(map[*Rule][2]int)
+	rule2range := make(map[*ciscoRule][2]int)
 	for _, sorted := range key2rules {
 		if len(sorted) < 2 {
 			continue
@@ -688,7 +688,7 @@ func joinRanges(rules Rules, prt2obj name2Proto) Rules {
 	}
 
 	if changed {
-		var newRules Rules
+		var newRules ciscoRules
 		for _, rule := range rules {
 
 			// Ignore deleted rules
@@ -720,7 +720,7 @@ func joinRanges(rules Rules, prt2obj name2Proto) Rules {
 type aclInfo struct {
 	name                                             string
 	isStdACL                                         bool
-	intfRules, rules                                 Rules
+	intfRules, rules                                 ciscoRules
 	lrules                                           linuxRules
 	prt2obj                                          name2Proto
 	ipNet2obj                                        name2ipNet
@@ -743,7 +743,7 @@ type aclInfo struct {
 // Otherwise the connection may be lost,
 // - if the device is accessed over an IPSec tunnel
 // - and we change the ACL incrementally.
-func moveRulesEspAh(rules Rules, prt2obj name2Proto, hasLog bool) Rules {
+func moveRulesEspAh(rules ciscoRules, prt2obj name2Proto, hasLog bool) ciscoRules {
 	prtEsp := prt2obj["50"]
 	prtAh := prt2obj["51"]
 	if prtEsp == nil && prtAh == nil && !hasLog {
@@ -752,7 +752,7 @@ func moveRulesEspAh(rules Rules, prt2obj name2Proto, hasLog bool) Rules {
 	if rules == nil {
 		return nil
 	}
-	var denyRules, cryptoRules, permitRules Rules
+	var denyRules, cryptoRules, permitRules ciscoRules
 	for _, rule := range rules {
 		if rule.deny {
 			denyRules.push(rule)
@@ -831,7 +831,7 @@ func addLocalDenyRules(aclInfo *aclInfo, routerData *routerData) {
 			}
 		}
 		aclInfo.rules.push(
-			&Rule{
+			&ciscoRule{
 				deny: true,
 				src:  groupOrSingle(srcNetworks),
 				dst:  groupOrSingle(filterOnly),
@@ -841,12 +841,12 @@ func addLocalDenyRules(aclInfo *aclInfo, routerData *routerData) {
 		for _, src := range srcNetworks {
 			for _, dst := range filterOnly {
 				aclInfo.rules.push(
-					&Rule{deny: true, src: src, dst: dst, prt: prtIP})
+					&ciscoRule{deny: true, src: src, dst: dst, prt: prtIP})
 			}
 		}
 	}
 	aclInfo.rules.push(
-		&Rule{src: network00, dst: network00, prt: prtIP})
+		&ciscoRule{src: network00, dst: network00, prt: prtIP})
 }
 
 /*
@@ -861,7 +861,7 @@ func addLocalDenyRules(aclInfo *aclInfo, routerData *routerData) {
               IP/mask objects.
               Parameter $hash is changed to reflect combined IP/mask objects.
 */
-func combineAdjacentIPMask(hash map[*ipNet]*Rule, ipNet2obj name2ipNet) []*ipNet {
+func combineAdjacentIPMask(hash map[*ipNet]*ciscoRule, ipNet2obj name2ipNet) []*ipNet {
 
 	// Take objects from keys of map.
 	// Sort by IP address. Adjacent networks will be adjacent elements then.
@@ -966,7 +966,7 @@ func findObjectgroups(aclInfo *aclInfo, routerData *routerData) {
 			srcRange, prt *proto
 			log           string
 		}
-		groupruleTree := make(map[key]map[*ipNet]*Rule)
+		groupruleTree := make(map[key]map[*ipNet]*ciscoRule)
 
 		// Find groups of rules with identical
 		// deny, srcRange, prt, log, src/dst and different dst/src.
@@ -983,7 +983,7 @@ func findObjectgroups(aclInfo *aclInfo, routerData *routerData) {
 			k := key{deny, that, srcRange, prt, log}
 			href, ok := groupruleTree[k]
 			if !ok {
-				href = make(map[*ipNet]*Rule)
+				href = make(map[*ipNet]*ciscoRule)
 				groupruleTree[k] = href
 			}
 			href[this] = rule
@@ -997,9 +997,9 @@ func findObjectgroups(aclInfo *aclInfo, routerData *routerData) {
 			active bool
 
 			// object-key => rule, ...
-			hash map[*ipNet]*Rule
+			hash map[*ipNet]*ciscoRule
 		}
-		groupGlue := make(map[*Rule]*glueType)
+		groupGlue := make(map[*ciscoRule]*glueType)
 		for _, href := range groupruleTree {
 
 			// href is {dst/src => rule, ...}
@@ -1021,7 +1021,7 @@ func findObjectgroups(aclInfo *aclInfo, routerData *routerData) {
 		// or define a new one
 		// or return combined network.
 		// Returns ipNet object with empty IP, representing a group.
-		getGroup := func(hash map[*ipNet]*Rule) *ipNet {
+		getGroup := func(hash map[*ipNet]*ciscoRule) *ipNet {
 
 			// Get sorted and combined list of objects from hash of objects.
 			// Hash is adjusted, if objects are combined.
@@ -1070,7 +1070,7 @@ func findObjectgroups(aclInfo *aclInfo, routerData *routerData) {
 		}
 
 		// Build new list of rules using object groups.
-		newRules := make(Rules, 0)
+		newRules := make(ciscoRules, 0)
 		for _, rule := range rules {
 			if glue, ok := groupGlue[rule]; ok {
 				if glue.active {
@@ -1130,7 +1130,7 @@ func addProtectRules(aclInfo *aclInfo, hasFinalPermit bool) {
 		}
 	}
 	if deleted != 0 {
-		newRules := make(Rules, 0, len(rules)-deleted)
+		newRules := make(ciscoRules, 0, len(rules)-deleted)
 		for _, rule := range rules {
 			if rule != nil {
 				newRules.push(rule)
@@ -1166,7 +1166,7 @@ func addProtectRules(aclInfo *aclInfo, hasFinalPermit bool) {
 			continue
 		}
 		aclInfo.intfRules.push(
-			&Rule{
+			&ciscoRule{
 				deny: true,
 				src:  network00,
 				dst:  intf,
@@ -1193,7 +1193,7 @@ func checkFinalPermit(aclInfo *aclInfo) bool {
 func addFinalPermitDenyRule(aclInfo *aclInfo, addDeny, addPermit bool) {
 	if addDeny || addPermit {
 		aclInfo.rules.push(
-			&Rule{
+			&ciscoRule{
 				deny: addDeny,
 				src:  aclInfo.network00,
 				dst:  aclInfo.network00,
@@ -1746,7 +1746,7 @@ func (tree *prtBintree) Noop() bool { return tree.noop }
 
 type attrOrder [4]struct {
 	count int
-	get   func(*Rule) interface{}
+	get   func(*ciscoRule) interface{}
 	set   func(*linuxRule, interface{})
 	name  string
 }
@@ -2035,28 +2035,28 @@ func findChains(aclInfo *aclInfo, routerData *routerData) {
 	}
 	order := attrOrder{
 		{
-			get: func(rule *Rule) interface{} { return rule.srcRange },
+			get: func(rule *ciscoRule) interface{} { return rule.srcRange },
 			set: func(rule *linuxRule, val interface{}) {
 				rule.srcRange = val.(*prtBintree)
 			},
 			name: "srcRange",
 		},
 		{
-			get: func(rule *Rule) interface{} { return rule.dst },
+			get: func(rule *ciscoRule) interface{} { return rule.dst },
 			set: func(rule *linuxRule, val interface{}) {
 				rule.dst = val.(*netBintree)
 			},
 			name: "dst",
 		},
 		{
-			get: func(rule *Rule) interface{} { return rule.prt },
+			get: func(rule *ciscoRule) interface{} { return rule.prt },
 			set: func(rule *linuxRule, val interface{}) {
 				rule.prt = val.(*prtBintree)
 			},
 			name: "prt",
 		},
 		{
-			get: func(rule *Rule) interface{} { return rule.src },
+			get: func(rule *ciscoRule) interface{} { return rule.src },
 			set: func(rule *linuxRule, val interface{}) {
 				rule.src = val.(*netBintree)
 			},
@@ -2067,7 +2067,7 @@ func findChains(aclInfo *aclInfo, routerData *routerData) {
 		prevDeny := rules[0].deny
 
 		// Add special rule as marker, that end of rules has been reached.
-		rules.push(&Rule{src: nil})
+		rules.push(&ciscoRule{src: nil})
 		var start = 0
 		last := len(rules) - 1
 		var i = 0
@@ -2306,11 +2306,11 @@ func printIptablesACL(fd *os.File, aclInfo *aclInfo) {
 	}
 }
 
-func convertRuleObjects(rules []*jRule, ipNet2obj name2ipNet, prt2obj name2Proto) (Rules, bool) {
+func convertRuleObjects(rules []*jRule, ipNet2obj name2ipNet, prt2obj name2Proto) (ciscoRules, bool) {
 	if rules == nil {
 		return nil, false
 	}
-	var expanded Rules
+	var expanded ciscoRules
 	var hasLog bool
 	for _, rule := range rules {
 		srcList := ipNetList(rule.Src, ipNet2obj)
@@ -2325,7 +2325,7 @@ func convertRuleObjects(rules []*jRule, ipNet2obj name2ipNet, prt2obj name2Proto
 			for _, dst := range dstList {
 				for _, prt := range prtList {
 					expanded.push(
-						&Rule{
+						&ciscoRule{
 							deny:         rule.Deny == 1,
 							src:          src,
 							dst:          dst,
@@ -2693,7 +2693,7 @@ func printCiscoACL(fd *os.File, aclInfo *aclInfo, routerData *routerData) {
 		prefix = "access-list " + name + " extended"
 	}
 
-	for _, rules := range []Rules{aclInfo.intfRules, aclInfo.rules} {
+	for _, rules := range []ciscoRules{aclInfo.intfRules, aclInfo.rules} {
 		for _, rule := range rules {
 			action := getCiscoAction(rule.deny)
 			protoCode, srcPortCode, dstPortCode :=
