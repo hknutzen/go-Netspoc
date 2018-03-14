@@ -1203,7 +1203,7 @@ func addFinalPermitDenyRule(aclInfo *aclInfo, addDeny, addPermit bool) {
 }
 
 // Returns iptables code for filtering a protocol.
-func iptablesPrtCode(srcRangeNode, prtNode *prtBintree) string {
+func iptablesPrtCode(srcRangeNode, prtNode *prtBintree, ipv6 bool) string {
 	prt := &prtNode.proto
 	protocol := prt.protocol
 	result := "-p " + protocol
@@ -1234,6 +1234,9 @@ func iptablesPrtCode(srcRangeNode, prtNode *prtBintree) string {
 		}
 		return result
 	case "icmp":
+		if ipv6 {
+			result = "-p ipv6-icmp"
+		}
 		icmpType := prt.icmpType
 		if icmpType != -1 {
 			code := prt.icmpCode
@@ -2266,7 +2269,7 @@ func printChains(fd *os.File, routerData *routerData) {
 				}
 				fallthrough
 			default:
-				result += " " + iptablesPrtCode(srcRange, prt)
+				result += " " + iptablesPrtCode(srcRange, prt, routerData.ipv6)
 			}
 			fmt.Fprintln(fd, prefix, result)
 		}
@@ -2276,7 +2279,7 @@ func printChains(fd *os.File, routerData *routerData) {
 	fmt.Fprintln(fd)
 }
 
-func iptablesACLLine(fd *os.File, rule *linuxRule, prefix string) {
+func iptablesACLLine(fd *os.File, rule *linuxRule, prefix string, ipv6 bool) {
 	src, dst, srcRange, prt := rule.src, rule.dst, rule.srcRange, rule.prt
 	var jump string
 	if rule.useGoto {
@@ -2292,17 +2295,17 @@ func iptablesACLLine(fd *os.File, rule *linuxRule, prefix string) {
 		result += " -d " + prefixCode(&dst.ipNet)
 	}
 	if prt.protocol != "ip" {
-		result += " " + iptablesPrtCode(srcRange, prt)
+		result += " " + iptablesPrtCode(srcRange, prt, ipv6)
 	}
 	fmt.Fprintln(fd, result)
 }
 
-func printIptablesACL(fd *os.File, aclInfo *aclInfo) {
+func printIptablesACL(fd *os.File, aclInfo *aclInfo, routerData *routerData) {
 	name := aclInfo.name
 	fmt.Fprintf(fd, ":%s -\n", name)
 	intfPrefix := fmt.Sprintf("-A %s", name)
 	for _, rule := range aclInfo.lrules {
-		iptablesACLLine(fd, rule, intfPrefix)
+		iptablesACLLine(fd, rule, intfPrefix, routerData.ipv6)
 	}
 }
 
@@ -2343,6 +2346,7 @@ func convertRuleObjects(rules []*jRule, ipNet2obj name2ipNet, prt2obj name2Proto
 
 type routerData struct {
 	model           string
+	ipv6            bool
 	acls            []*aclInfo
 	logDeny         string
 	filterOnlyGroup *ipNet
@@ -2428,6 +2432,7 @@ func prepareACLs(path string) *routerData {
 	}
 	re := regexp.MustCompile("/ipv6/[^/]+$")
 	ipv6 := re.MatchString(path)
+	routerData.ipv6 = ipv6
 	model := jdata.Model
 	routerData.model = model
 	routerData.logDeny = jdata.LogDeny
@@ -2604,7 +2609,8 @@ func printObjectGroups(fd *os.File, aclInfo *aclInfo, model string) {
 
 // Returns 3 values for building a Cisco ACL:
 // permit <val1> <src> <val2> <dst> <val3>
-func ciscoPrtCode(srcRange, prt *proto) (t1, t2, t3 string) {
+func ciscoPrtCode (
+	srcRange, prt *proto, model string, ipv6 bool) (t1, t2, t3 string) {
 	protocol := prt.protocol
 
 	switch protocol {
@@ -2640,15 +2646,19 @@ func ciscoPrtCode(srcRange, prt *proto) (t1, t2, t3 string) {
 		}
 		return protocol, srcPrt, dstPrt
 	case "icmp":
+		icmp := "icmp"
+		if ipv6 && model == "ASA" {
+			icmp = "icmp6";
+		}
 		icmpType := prt.icmpType
 		if icmpType != -1 {
 			code := prt.icmpCode
 			if code != -1 {
-				return protocol, "", fmt.Sprint(icmpType, code)
+				return icmp, "", fmt.Sprint(icmpType, code)
 			}
-			return protocol, "", fmt.Sprint(icmpType)
+			return icmp, "", fmt.Sprint(icmpType)
 		}
-		return protocol, "", ""
+		return icmp, "", ""
 	default:
 		return protocol, "", ""
 	}
@@ -2682,6 +2692,7 @@ func printCiscoACL(fd *os.File, aclInfo *aclInfo, routerData *routerData) {
 	}
 
 	name := aclInfo.name
+	ipv6 := routerData.ipv6
 	numbered := 10
 	prefix := ""
 	switch model {
@@ -2697,7 +2708,7 @@ func printCiscoACL(fd *os.File, aclInfo *aclInfo, routerData *routerData) {
 		for _, rule := range rules {
 			action := getCiscoAction(rule.deny)
 			protoCode, srcPortCode, dstPortCode :=
-				ciscoPrtCode(rule.srcRange, rule.prt)
+				ciscoPrtCode(rule.srcRange, rule.prt, model, ipv6)
 			result := fmt.Sprintf("%s %s %s", prefix, action, protoCode)
 			result += " " + ciscoACLAddr(rule.src, model)
 			if srcPortCode != "" {
@@ -2730,7 +2741,7 @@ func printACL(fd *os.File, aclInfo *aclInfo, routerData *routerData) {
 
 		// Print all sub-chains at once before first toplevel chain is printed.
 		printChains(fd, routerData)
-		printIptablesACL(fd, aclInfo)
+		printIptablesACL(fd, aclInfo, routerData)
 	} else {
 		printObjectGroups(fd, aclInfo, model)
 		printCiscoACL(fd, aclInfo, routerData)
