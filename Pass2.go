@@ -792,6 +792,9 @@ func moveRulesEspAh(rules ciscoRules, prt2obj name2Proto, hasLog bool) ciscoRule
 
 func createGroup(elements []*ipNet, aclInfo *aclInfo, routerData *routerData) *objGroup {
 	name := fmt.Sprintf("g%d", routerData.objGroupCounter)
+	if routerData.ipv6 {
+		name = "v6" + name
+	}
 	groupRef := &ipNet{IPNet: nil, name: name}
 	group := &objGroup{
 		name:     name,
