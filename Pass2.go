@@ -1209,7 +1209,7 @@ func addFinalPermitDenyRule(aclInfo *aclInfo, addDeny, addPermit bool) {
 func iptablesPrtCode(srcRangeNode, prtNode *prtBintree, ipv6 bool) string {
 	prt := &prtNode.proto
 	protocol := prt.protocol
-	result := "-p " + protocol
+	result := " -p " + protocol
 	switch protocol {
 	case "tcp", "udp":
 		portCode := func(rangeObj *proto) string {
@@ -1237,7 +1237,7 @@ func iptablesPrtCode(srcRangeNode, prtNode *prtBintree, ipv6 bool) string {
 		}
 	case "icmp":
 		if ipv6 {
-			result = "-p ipv6-icmp"
+			result = " -p ipv6-icmp"
 		}
 		if icmpType := prt.icmpType; icmpType != -1 {
 			result += " --icmp-type " + strconv.Itoa(icmpType)
@@ -2266,7 +2266,7 @@ func printChains(fd *os.File, routerData *routerData) {
 				}
 				fallthrough
 			default:
-				result += " " + iptablesPrtCode(srcRange, prt, routerData.ipv6)
+				result += iptablesPrtCode(srcRange, prt, routerData.ipv6)
 			}
 			fmt.Fprintln(fd, prefix, result)
 		}
@@ -2286,7 +2286,7 @@ func iptablesACLLine(fd *os.File, rule *linuxRule, prefix string, ipv6 bool) {
 		result += " -d " + prefixCode(&dst.ipNet)
 	}
 	if prt.protocol != "ip" {
-		result += " " + iptablesPrtCode(srcRange, prt, ipv6)
+		result += iptablesPrtCode(srcRange, prt, ipv6)
 	}
 	fmt.Fprintln(fd, result)
 }
