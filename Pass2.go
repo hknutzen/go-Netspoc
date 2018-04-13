@@ -2194,6 +2194,14 @@ func prefixCode(ipNet *ipNet) string {
 	return ipNet.String()
 }
 
+func jumpCode(rule *linuxRule) string {
+	if rule.useGoto {
+		return "-g"
+	} else {
+		return "-j"
+	}
+}
+
 func actionCode(rule *linuxRule) (result string) {
 	if rule.chain != nil {
 		result = rule.chain.name
@@ -2231,13 +2239,7 @@ func printChains(fd *os.File, routerData *routerData) {
 	for _, chain := range chains {
 		prefix := fmt.Sprintf("-A %s", chain.name)
 		for _, rule := range chain.rules {
-			var jump string
-			if rule.useGoto {
-				jump = "-g"
-			} else {
-				jump = "-j"
-			}
-			result := fmt.Sprintf("%s %s", jump, actionCode(rule))
+			result := fmt.Sprintf("%s %s", jumpCode(rule), actionCode(rule))
 			if src := rule.src; src != nil {
 				if size, _ := src.Mask.Size(); size != 0 {
 					result += " -s " + prefixCode(&src.ipNet)
@@ -2284,13 +2286,7 @@ func printChains(fd *os.File, routerData *routerData) {
 
 func iptablesACLLine(fd *os.File, rule *linuxRule, prefix string, ipv6 bool) {
 	src, dst, srcRange, prt := rule.src, rule.dst, rule.srcRange, rule.prt
-	var jump string
-	if rule.useGoto {
-		jump = "-g"
-	} else {
-		jump = "-j"
-	}
-	result := fmt.Sprintf("%s %s %s", prefix, jump, actionCode(rule))
+	result := fmt.Sprintf("%s %s %s", prefix, jumpCode(rule), actionCode(rule))
 	if size, _ := src.Mask.Size(); size != 0 {
 		result += " -s " + prefixCode(&src.ipNet)
 	}
