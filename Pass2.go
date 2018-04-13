@@ -2546,7 +2546,7 @@ func ciscoACLAddr(obj *ipNet, model string) string {
 		return "host " + ipCode
 	}
 	if bits == 128 {
-		return fmt.Sprintf("%s/%d", ipCode, prefix);
+		return obj.name
 	}
 	mask := net.IP(obj.Mask)
 
