@@ -2301,9 +2301,6 @@ func printIptablesACL(fd *os.File, aclInfo *aclInfo, routerData *routerData) {
 }
 
 func convertRuleObjects(rules []*jRule, ipNet2obj name2ipNet, prt2obj name2Proto) (ciscoRules, bool) {
-	if rules == nil {
-		return nil, false
-	}
 	var expanded ciscoRules
 	var hasLog bool
 	for _, rule := range rules {
