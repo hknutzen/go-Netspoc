@@ -1235,23 +1235,18 @@ func iptablesPrtCode(srcRangeNode, prtNode *prtBintree, ipv6 bool) string {
 		if dport := portCode(prt); dport != "" {
 			result += " --dport " + dport
 		}
-		return result
 	case "icmp":
 		if ipv6 {
 			result = "-p ipv6-icmp"
 		}
-		icmpType := prt.icmpType
-		if icmpType != -1 {
-			code := prt.icmpCode
-			if code != -1 {
-				return fmt.Sprintf("%s --icmp-type %d/%d", result, icmpType, code)
+		if icmpType := prt.icmpType; icmpType != -1 {
+			result += " --icmp-type " + strconv.Itoa(icmpType)
+			if code := prt.icmpCode; code != -1 {
+				result += "/" + strconv.Itoa(code)
 			}
-			return fmt.Sprintf("%s --icmp-type %d", result, icmpType)
 		}
-		return result
-	default:
-		return result
 	}
+	return result
 }
 
 // Handle iptables.
