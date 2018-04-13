@@ -2197,20 +2197,17 @@ func prefixCode(ipNet *ipNet) string {
 func jumpCode(rule *linuxRule) string {
 	if rule.useGoto {
 		return "-g"
-	} else {
-		return "-j"
 	}
+	return "-j"
 }
 
-func actionCode(rule *linuxRule) (result string) {
+func actionCode(rule *linuxRule) string {
 	if rule.chain != nil {
-		result = rule.chain.name
+		return rule.chain.name
 	} else if rule.deny {
-		result = "droplog"
-	} else {
-		result = "ACCEPT"
+		return "droplog"
 	}
-	return
+	return "ACCEPT"
 }
 
 // Print chains of iptables.
