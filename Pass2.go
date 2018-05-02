@@ -2564,17 +2564,13 @@ func ciscoACLAddr(obj *ipNet, model string) string {
 }
 
 func printObjectGroups(fd *os.File, aclInfo *aclInfo, model string) {
-	groups := aclInfo.objectGroups
-	if len(groups) == 0 {
-		return
-	}
 	var keyword string
 	if model == "NX-OS" {
 		keyword = "object-group ip address"
 	} else {
 		keyword = "object-group network"
 	}
-	for _, group := range groups {
+	for _, group := range aclInfo.objectGroups {
 		numbered := 10
 		fmt.Fprintln(fd, keyword, group.name)
 		for _, element := range group.elements {
@@ -2603,7 +2599,13 @@ func ciscoPrtCode (
 
 	switch protocol {
 	case "ip":
-		return "ip", "", ""
+		var ip string
+		if model == "IOS" && ipv6 {
+			ip = "ipv6"
+		} else {
+			ip = "ip"
+		}
+		return ip, "", ""
 	case "tcp", "udp":
 		portCode := func(rangeObj *proto) string {
 			ports := rangeObj.ports
@@ -2684,10 +2686,17 @@ func printCiscoACL(fd *os.File, aclInfo *aclInfo, routerData *routerData) {
 	numbered := 10
 	prefix := ""
 	switch model {
-	case "IOS":
-		fmt.Fprintln(fd, "ip access-list extended", name)
-	case "NX-OS":
-		fmt.Fprintln(fd, "ip access-list", name)
+	case "IOS", "NX-OS":
+		if ipv6 {
+			fmt.Fprintln(fd, "ipv6 access-list", name)
+			break
+		}
+		switch model {
+		case "IOS":
+			fmt.Fprintln(fd, "ip access-list extended", name)
+		case "NX-OS":
+			fmt.Fprintln(fd, "ip access-list", name)
+		}
 	case "ASA":
 		prefix = "access-list " + name + " extended"
 	}
