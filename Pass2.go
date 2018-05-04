@@ -2840,30 +2840,45 @@ func readFileLines(filename string) []string {
 	return result
 }
 
-func pass2File(devicePath, dir string, c chan bool) {
-	success := false
+type pass2Result int
+
+const (
+	fail  pass2Result = iota
+	ok
+	reuse
+)
+
+func pass2File(devicePath, dir, prev string, c chan pass2Result) {
+	success := fail
 
 	// Send ok on success
 	defer func() { c <- success }()
 
+	if tryPrev(devicePath, dir, prev) {
+		success = reuse
+		return
+	}
 	file := dir + "/" + devicePath
 	routerData := prepareACLs(file + ".rules")
 	config := readFileLines(file + ".config")
 	printCombined(config, routerData, file)
-	success = true
+	success = ok
 }
 
 func applyConcurrent(deviceNamesFh *os.File, dir, prev string) {
 
 	var started, generated, reused, errors int
 	concurrent := config.concurrent
-	c := make(chan bool, concurrent)
+	c := make(chan pass2Result, concurrent)
 	workersLeft := concurrent
 
 	waitAndCheck := func() {
-		if <-c {
+		switch <-c {
+		case ok:
 			generated++
-		} else {
+		case reuse:
+			reused++
+		case fail:
 			errors++
 		}
 		started--
@@ -2874,21 +2889,19 @@ func applyConcurrent(deviceNamesFh *os.File, dir, prev string) {
 	for scanner.Scan() {
 		devicePath := scanner.Text()
 
-		if tryPrev(devicePath, dir, prev) {
-			reused++
-		} else if 1 >= concurrent {
+		if 1 >= concurrent {
 			// Process sequentially.
-			pass2File(devicePath, dir, c)
+			pass2File(devicePath, dir, prev, c)
 			waitAndCheck()
 		} else if workersLeft > 0 {
 			// Start concurrent jobs at beginning.
-			go pass2File(devicePath, dir, c)
+			go pass2File(devicePath, dir, prev, c)
 			workersLeft--
 			started++
 		} else {
 			// Start next job, after some job has finished.
 			waitAndCheck()
-			go pass2File(devicePath, dir, c)
+			go pass2File(devicePath, dir, prev, c)
 			started++
 		}
 	}
