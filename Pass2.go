@@ -55,11 +55,6 @@ var (
 	}
 )
 
-func toStderr(format string, args ...interface{}) {
-	fmt.Fprintf(os.Stderr, format, args...)
-	fmt.Fprintln(os.Stderr)
-}
-
 func fatalErr(format string, args ...interface{}) {
 	string := "Error: " + fmt.Sprintf(format, args...)
 	fmt.Fprintln(os.Stderr, string)
@@ -2119,10 +2114,6 @@ func findChains(aclInfo *aclInfo, routerData *routerData) {
 						(*subtree)[key3] = codedLpermit
 					}
 				}
-
-				//for _, what := range order {
-				//   toStderr(what.name)
-				//}
 				ruleSets = append(ruleSets, treeAndOrder{&ruleTree, &order})
 				if i == last {
 					break
