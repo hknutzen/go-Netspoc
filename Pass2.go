@@ -33,7 +33,6 @@ import (
 	"os"
 	"os/exec"
 	//	"reflect"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -2409,9 +2408,11 @@ func prepareACLs(path string) *routerData {
 	if err != nil {
 		panic(err)
 	}
-	re := regexp.MustCompile("/ipv6/[^/]+$")
-	ipv6 := re.MatchString(path)
-	routerData.ipv6 = ipv6
+	var ipv6 bool
+	if index := strings.Index(path, "/ipv6/"); index != -1 {
+		routerData.ipv6 = true
+		ipv6 = true
+	}
 	model := jdata.Model
 	routerData.model = model
 	routerData.logDeny = jdata.LogDeny
@@ -2736,6 +2737,8 @@ func printACL(fd *os.File, aclInfo *aclInfo, routerData *routerData) {
 	}
 }
 
+const aclMarker = "#insert "
+
 func printCombined(config []string, routerData *routerData, outPath string) {
 	fd, err := os.Create(outPath)
 	if err != nil {
@@ -2746,15 +2749,11 @@ func printCombined(config []string, routerData *routerData, outPath string) {
 		aclHash[acl.name] = acl
 	}
 
-	// Print config and insert printed ACLs at "#insert <name>" markers.
-	re := regexp.MustCompile("^#insert (.*)$")
+	// Print config and insert printed ACLs at aclMarker.
 	for _, line := range config {
-
-		indexes := re.FindStringSubmatchIndex(line)
-
-		if indexes != nil {
+		if strings.HasPrefix(line, aclMarker) {
 			// Print ACL.
-			name := line[indexes[2]:indexes[3]]
+			name := line[len(aclMarker):]
 			aclInfo, found := aclHash[name]
 			if !found {
 				fatalErr("Unexpected ACL %s", name)
