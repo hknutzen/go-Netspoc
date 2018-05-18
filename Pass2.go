@@ -817,15 +817,15 @@ func addLocalDenyRules(aclInfo *aclInfo, routerData *routerData) {
 		groupOrSingle := func(objList []*ipNet) *ipNet {
 			if len(objList) == 1 {
 				return objList[0]
-			} else if routerData.filterOnlyGroup != nil {
+			}
+			if routerData.filterOnlyGroup != nil {
 
 				// Reuse object-group at all interfaces.
 				return routerData.filterOnlyGroup
-			} else {
-				group := createGroup(objList, aclInfo, routerData)
-				routerData.filterOnlyGroup = group.ref
-				return group.ref
 			}
+			group := createGroup(objList, aclInfo, routerData)
+			routerData.filterOnlyGroup = group.ref
+			return group.ref
 		}
 		aclInfo.rules.push(
 			&ciscoRule{
@@ -1211,15 +1211,17 @@ func iptablesPrtCode(srcRangeNode, prtNode *prtBintree, ipv6 bool) string {
 			v1, v2 := ports[0], ports[1]
 			if v1 == v2 {
 				return fmt.Sprint(v1)
-			} else if v1 == 1 && v2 == 65535 {
-				return ""
-			} else if v2 == 65535 {
-				return fmt.Sprint(v1, ":")
-			} else if v1 == 1 {
-				return fmt.Sprint(":", v2)
-			} else {
-				return fmt.Sprint(v1, ":", v2)
 			}
+			if v1 == 1 && v2 == 65535 {
+				return ""
+			}
+			if v2 == 65535 {
+				return fmt.Sprint(v1, ":")
+			}
+			if v1 == 1 {
+				return fmt.Sprint(":", v2)
+			}
+			return fmt.Sprint(v1, ":", v2)
 		}
 		if srcRangeNode != nil {
 			if sport := portCode(&srcRangeNode.proto); sport != "" {
@@ -2189,7 +2191,8 @@ func jumpCode(rule *linuxRule) string {
 func actionCode(rule *linuxRule) string {
 	if rule.chain != nil {
 		return rule.chain.name
-	} else if rule.deny {
+	}
+	if rule.deny {
 		return "droplog"
 	}
 	return "ACCEPT"
@@ -2529,7 +2532,8 @@ func ciscoACLAddr(obj *ipNet, model string) string {
 			return "any6"
 		}
 		return "any"
-	} else if model == "NX-OS" {
+	}
+	if model == "NX-OS" {
 		return obj.name
 	}
 	ip := obj.IP
@@ -2604,15 +2608,17 @@ func ciscoPrtCode (
 			v1, v2 := ports[0], ports[1]
 			if v1 == v2 {
 				return fmt.Sprint("eq ", v1)
-			} else if v1 == 1 && v2 == 65535 {
-				return ""
-			} else if v2 == 65535 {
-				return fmt.Sprint("gt ", v1-1)
-			} else if v1 == 1 {
-				return fmt.Sprint("lt ", v2+1)
-			} else {
-				return fmt.Sprint("range ", v1, v2)
 			}
+			if v1 == 1 && v2 == 65535 {
+				return ""
+			}
+			if v2 == 65535 {
+				return fmt.Sprint("gt ", v1-1)
+			}
+			if v1 == 1 {
+				return fmt.Sprint("lt ", v2+1)
+			}
+			return fmt.Sprint("range ", v1, v2)
 		}
 		dstPrt := portCode(prt)
 		if prt.established {
