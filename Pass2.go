@@ -32,27 +32,12 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	//	"reflect"
 	"sort"
 	"strconv"
 	"strings"
 )
 
-// Config holds program flags.
-type Config struct {
-	concurrent int
-	pipe       bool
-	verbose    bool
-}
-
-var (
-	showDiag = false
-	config   = Config{
-		concurrent: 8,
-		pipe:       false,
-		verbose:    false,
-	}
-)
+var config Config
 
 func fatalErr(format string, args ...interface{}) {
 	string := "Error: " + fmt.Sprintf(format, args...)
@@ -61,7 +46,7 @@ func fatalErr(format string, args ...interface{}) {
 }
 
 func info(format string, args ...interface{}) {
-	if config.verbose {
+	if config.Verbose {
 		string := fmt.Sprintf(format, args...)
 		fmt.Fprintln(os.Stderr, string)
 	}
@@ -2864,7 +2849,7 @@ func pass2File(devicePath, dir, prev string, c chan pass2Result) {
 func applyConcurrent(deviceNamesFh *os.File, dir, prev string) {
 
 	var started, generated, reused, errors int
-	concurrent := config.concurrent
+	concurrent := config.ConcurrencyPass2
 	c := make(chan pass2Result, concurrent)
 	workersLeft := concurrent
 
@@ -2927,7 +2912,7 @@ func pass2(dir string) {
 
 	// Read to be processed files either from STDIN or from file.
 	var fromPass1 *os.File
-	if config.pipe {
+	if config.Pipe {
 		fromPass1 = os.Stdin
 	} else {
 		devlist := dir + "/.devlist"
@@ -2949,10 +2934,10 @@ func pass2(dir string) {
 }
 
 func main() {
-	if len(os.Args) != 2 {
-		fatalErr("Usage: %s DIR", os.Args[0])
+	cfg, _, outDir := getArgs()
+	config = *cfg
+	if outDir != "" {
+		pass2(outDir)
+		info("Finished")
 	}
-	var dir = os.Args[1]
-	pass2(dir)
-	info("Finished")
 }
