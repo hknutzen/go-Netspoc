@@ -35,9 +35,11 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 var config Config
+var startTime time.Time
 
 func fatalErr(format string, args ...interface{}) {
 	string := "Error: " + fmt.Sprintf(format, args...)
@@ -55,6 +57,15 @@ func info(format string, args ...interface{}) {
 func diagMsg(msg string) {
 	if os.Getenv("SHOW_DIAG") != "" {
 		fmt.Fprintln(os.Stderr, "DIAG: "+msg)
+	}
+}
+
+func progress(msg string) {
+	if config.Verbose {
+		if config.TimeStamps {
+			msg = fmt.Sprintf("%.0fs %s", time.Since(startTime).Seconds(), msg)
+		}
+		info(msg)
 	}
 }
 
@@ -2937,7 +2948,12 @@ func main() {
 	cfg, _, outDir := getArgs()
 	config = *cfg
 	if outDir != "" {
+		if config.StartTime != 0 {
+			startTime = time.Unix(config.StartTime, 0)
+		} else {
+			startTime = time.Now()
+		}
 		pass2(outDir)
-		info("Finished")
+		progress("Finished")
 	}
 }

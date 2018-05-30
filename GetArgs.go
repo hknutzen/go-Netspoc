@@ -95,7 +95,7 @@ type Config struct {
 	MaxErrors int   `flag:"max_errors m"`
 	Verbose bool    `flag:"verbose v"`
 	TimeStamps bool `flag:"time_stamps t"`
-	StartTime int
+	StartTime int64
 	Pipe bool
 }
 
