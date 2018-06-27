@@ -26,20 +26,21 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 
 import (
 	"fmt"
-	"io/ioutil"
-	"regexp"
-	"strings"
-	"os"
-	"strconv"
-	flag "github.com/spf13/pflag"
 	"github.com/octago/sflags"
 	"github.com/octago/sflags/gen/gpflag"
+	flag "github.com/spf13/pflag"
+	"io/ioutil"
+	"os"
+	"regexp"
+	"strconv"
+	"strings"
 )
 
 // Type for command line flag with value 0|1|warn
 type triState string
-func (v *triState) String () string { return string(*v) }
-func (v *triState) Set (s string) error {
+
+func (v *triState) String() string { return string(*v) }
+func (v *triState) Set(s string) error {
 	switch strings.ToLower(s) {
 	case "0", "no", "f", "false":
 		*v = "no"
@@ -52,16 +53,18 @@ func (v *triState) Set (s string) error {
 	}
 	return nil
 }
+
 // Needed for gen/gpflag to work, mostly for pflag compatibility.
 func (v triState) Type() string { return "tristate" }
 
 // Type for additional name to existing flag with inverted boolean value.
-type invFlag struct { flag *flag.Flag }
-func (v invFlag) String () string {
+type invFlag struct{ flag *flag.Flag }
+
+func (v invFlag) String() string {
 	b, _ := strconv.ParseBool(v.flag.Value.String())
 	return strconv.FormatBool(!b)
 }
-func (v invFlag) Set (s string) error {
+func (v invFlag) Set(s string) error {
 	b, err := strconv.ParseBool(s)
 	if err != nil {
 		return err
@@ -74,45 +77,45 @@ func (v invFlag) Type() string { return "invFlag" }
 
 // Config holds program flags.
 type Config struct {
-	CheckUnusedGroups triState
-	CheckUnusedOwners triState
-	CheckUnusedProtocols triState
-	CheckSubnets triState
-	CheckUnenforceable triState
-	CheckDuplicateRules triState
-	CheckRedundantRules triState
-	CheckFullyRedundantRules triState
-	CheckServiceUnknownOwner triState
-	CheckServiceMultiOwner triState
-	CheckSupernetRules triState
-	CheckTransientSupernetRules triState
+	CheckUnusedGroups            triState
+	CheckUnusedOwners            triState
+	CheckUnusedProtocols         triState
+	CheckSubnets                 triState
+	CheckUnenforceable           triState
+	CheckDuplicateRules          triState
+	CheckRedundantRules          triState
+	CheckFullyRedundantRules     triState
+	CheckServiceUnknownOwner     triState
+	CheckServiceMultiOwner       triState
+	CheckSupernetRules           triState
+	CheckTransientSupernetRules  triState
 	CheckPolicyDistributionPoint triState
-	AutoDefaultRoute bool 
-	ConcurrencyPass1 int
-	ConcurrencyPass2 int
-	IgnoreFiles *regexp.Regexp
-	Ipv6 bool       `flag:"ipv6 6"`
-	MaxErrors int   `flag:"max_errors m"`
-	Verbose bool    `flag:"verbose v"`
-	TimeStamps bool `flag:"time_stamps t"`
-	StartTime int64
-	Pipe bool
+	AutoDefaultRoute             bool
+	ConcurrencyPass1             int
+	ConcurrencyPass2             int
+	IgnoreFiles                  *regexp.Regexp
+	Ipv6                         bool `flag:"ipv6 6"`
+	MaxErrors                    int  `flag:"max_errors m"`
+	Verbose                      bool `flag:"verbose v"`
+	TimeStamps                   bool `flag:"time_stamps t"`
+	StartTime                    int64
+	Pipe                         bool
 }
 
 type invertedFlag map[string]*struct {
 	short string
-	orig string
+	orig  string
 }
 
 var invertedFlags = invertedFlag{
-	"quiet": { short: "q", orig: "verbose" },
+	"quiet": {short: "q", orig: "verbose"},
 	// For compatibilty with Perl Getopt::Long
-	"noauto_default_route": { orig: "auto_default_route" },
+	"noauto_default_route": {orig: "auto_default_route"},
 }
-	
+
 func parseOptions() *Config {
 	cfg := &Config{
-		
+
 		// Check for unused groups and protocolgroups.
 		CheckUnusedGroups: "warn",
 
@@ -121,7 +124,7 @@ func parseOptions() *Config {
 
 		// Check for unused protocol definitions.
 		CheckUnusedProtocols: "no",
-		
+
 		// Allow subnets only
 		// if the enclosing network is marked as 'has_subnets' or
 		// if the subnet is marked as 'subnet_of'
@@ -134,7 +137,7 @@ func parseOptions() *Config {
 		CheckDuplicateRules: "warn",
 
 		// Check for redundant rules.
-		CheckRedundantRules: "warn",
+		CheckRedundantRules:      "warn",
 		CheckFullyRedundantRules: "no",
 
 		// Check for services where owner can't be derived.
@@ -147,7 +150,7 @@ func parseOptions() *Config {
 		CheckSupernetRules: "warn",
 
 		// Check for transient supernet rules.
-		CheckTransientSupernetRules: "warn", 
+		CheckTransientSupernetRules: "warn",
 
 		// Check, that all managed routers have attribute
 		// 'policy_distribution_point', either directly or from inheritance.
@@ -203,7 +206,6 @@ func parseOptions() *Config {
 	flag.Parse()
 	return cfg
 }
-
 
 // Read names of input file/directory and output directory from
 // passed command line arguments.
@@ -290,7 +292,7 @@ func parseFile(filename string) {
 	}
 }
 
-func addConfigFromFile (inDir string) {
+func addConfigFromFile(inDir string) {
 	file := inDir + "/config"
 	if !isRegular(file) {
 		return

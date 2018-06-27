@@ -2588,7 +2588,7 @@ func printObjectGroups(fd *os.File, aclInfo *aclInfo, model string) {
 
 // Returns 3 values for building a Cisco ACL:
 // permit <val1> <src> <val2> <dst> <val3>
-func ciscoPrtCode (
+func ciscoPrtCode(
 	srcRange, prt *proto, model string, ipv6 bool) (t1, t2, t3 string) {
 	protocol := prt.protocol
 
@@ -2635,7 +2635,7 @@ func ciscoPrtCode (
 	case "icmp":
 		icmp := "icmp"
 		if ipv6 && model == "ASA" {
-			icmp = "icmp6";
+			icmp = "icmp6"
 		}
 		icmpType := prt.icmpType
 		if icmpType != -1 {
@@ -2838,7 +2838,7 @@ func readFileLines(filename string) []string {
 type pass2Result int
 
 const (
-	fail  pass2Result = iota
+	fail pass2Result = iota
 	ok
 	reuse
 )
