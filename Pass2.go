@@ -1414,12 +1414,14 @@ func (tree *netBintree) Hi() npBintree {
 	if hi := tree.hi; hi != nil {
 		return hi
 	}
+	// Must not use nil *netBintree, but nil interface.
 	return nil
 }
 func (tree *netBintree) Lo() npBintree {
 	if lo := tree.lo; lo != nil {
 		return lo
 	}
+	// Must not use nil *netBintree, but nil interface.
 	return nil
 }
 func (tree *netBintree) Seq() []*prtBintree { return nil }
@@ -1427,6 +1429,7 @@ func (tree *netBintree) Subtree() npBintree {
 	if subtree := tree.subtree; subtree != nil {
 		return subtree
 	}
+	// Must not use nil *netBintree, but nil interface.
 	return nil
 }
 func (tree *netBintree) Noop() bool { return tree.noop }
@@ -1717,12 +1720,14 @@ func (tree *prtBintree) Hi() npBintree {
 	if hi := tree.hi; hi != nil {
 		return hi
 	}
+	// Must not use nil *prtBintree, but nil interface.
 	return nil
 }
 func (tree *prtBintree) Lo() npBintree {
 	if lo := tree.lo; lo != nil {
 		return lo
 	}
+	// Must not use nil *prtBintree, but nil interface.
 	return nil
 }
 func (tree *prtBintree) Seq() []*prtBintree { return tree.seq }
@@ -1730,6 +1735,7 @@ func (tree *prtBintree) Subtree() npBintree {
 	if subtree := tree.subtree; subtree != nil {
 		return subtree
 	}
+	// Must not use nil *prtBintree, but nil interface.
 	return nil
 }
 func (tree *prtBintree) Noop() bool { return tree.noop }
