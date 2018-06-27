@@ -572,10 +572,9 @@ func optimizeRules(rules ciscoRules, aclInfo *aclInfo) ciscoRules {
 	if changed {
 		newRules := make(ciscoRules, 0)
 		for _, rule := range rules {
-			if rule.deleted {
-				continue
+			if !rule.deleted {
+				newRules.push(rule)
 			}
-			newRules.push(rule)
 		}
 		rules = newRules
 	}
