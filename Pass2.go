@@ -135,13 +135,10 @@ func createPrtObj(descr string) *proto {
 }
 
 func getNet00Addr(ipv6 bool) string {
-	var result string
 	if ipv6 {
-		result = "::/0"
-	} else {
-		result = "0.0.0.0/0"
+		return "::/0"
 	}
-	return result
+	return "0.0.0.0/0"
 }
 
 func setupIPNetRelation(ipNet2obj name2ipNet, ipv6 bool) {
