@@ -285,7 +285,7 @@ func parseFile(filename string) {
 		}
 	})
 
-	for name, _ := range config {
+	for name := range config {
 		fatalErr("Invalid keyword in %s: %s", filename, name)
 	}
 }
