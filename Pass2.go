@@ -501,25 +501,6 @@ func (tree ruleTree) add(deny bool) ruleTree4 {
 	return subtree
 }
 
-/*
-// Dynamically typed function adds next nesting levels.
-// Map for subtrees is created if necessary.
-func dynTree(tree interface{}, keys ...interface{}) interface{} {
-	t := reflect.ValueOf(tree)
-	for _, key := range keys {
-		k := reflect.ValueOf(key)
-		s := t.MapIndex(k)
-		// Create new map if necessary.
-		if !s.IsValid() {
-			s = reflect.MakeMap(t.Type().Elem())
-			t.SetMapIndex(k, s)
-		}
-		t = s
-	}
-	return t.Interface()
-}
-*/
-
 func optimizeRules(rules ciscoRules, aclInfo *aclInfo) ciscoRules {
 	prtIP := aclInfo.prt2obj["ip"]
 	changed := false
@@ -533,9 +514,6 @@ func optimizeRules(rules ciscoRules, aclInfo *aclInfo) ciscoRules {
 
 		subtree1 :=
 			ruleTree.add(rule.deny).add(srcRange).add(rule.src).add(rule.dst)
-		//// Build nested ruleTree by dynamically typed operations.
-		//// Go back to static type 'ruleTree1'.
-		//	dynTree(ruleTree, rule.deny, srcRange, rule.src, rule.dst).(ruleTree1)
 		if _, found := subtree1[rule.prt]; found {
 			rule.deleted = true
 			changed = true
