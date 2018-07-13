@@ -6,16 +6,72 @@ import (
 	"regexp"
 )
 
+var types = map[string]int {
+	"router"          : 1,
+	"network"         : 1,
+	"host"            : 1,
+	"any"             : 1,
+	"group"           : 1,
+	"area"            : 1,
+	"service"         : 1,
+	"owner"           : 1,
+	"protocol"        : 1,
+	"protocolgroup"   : 1,
+	"pathrestriction" : 1,
+	"nat"             : 1,
+	"isakmp"          : 1,
+	"ipsec"           : 1,
+	"crypto"          : 1,
+}
+
+// NAT is applied with bind_nat.
+// Owner is optionally referenced as sub_owner.
+// Interface definition uses network name.
+var aliases = map[string][]string {
+	"nat"     : {"bind_nat"},
+	"owner"   : {"sub_owner"},
+	"network" : {"interface"},
+}
+
+var subst = map[string]map[string]string{}
+
 func fatal_err(error string) {
 	fmt.Fprintln(os.Stderr, error)
 	os.Exit(1)
 }
 
 // Alt: Fill %subst with mapping from search to replace for given type.
-//func setup_subst(object string, search string, replace string) {
+func setup_subst(object string, search string, replace string) {
+	if types[object] != 1 {
+		fatal_err("Unknown type " + object)
+	}
 
+	subst[object] = map[string]string{ search : replace }
 
-//}
+	for _, other := range aliases[object] {
+		subst[other] = map[string]string{ search : replace, }
+	}
+
+   // Mark additinal types as valid for substitution.
+	// Meike: initialisiere leere map - wofür?
+	if object == "network" {
+		_, ok := subst["interface"]
+		if ok == false {
+			subst["interface"] = map[string]string{}
+		}
+		_, ok = subst["host"]
+		if ok == false {
+			subst["host"] = map[string]string{}
+		}
+	}
+	if object == "router" {
+		_, ok := subst["interface"]
+		if ok == false {
+			subst["interface"] = map[string]string{}
+		}
+	}
+
+}
 
 
 func get_type_and_name(object string) (string, string){
@@ -48,7 +104,7 @@ func setup_pattern () {
 		}
 
 		fmt.Println(old_type, old_name, new_name)
-		//setup_subst(old_type, old_name, new_name)
+		setup_subst(old_type, old_name, new_name)
 	}
 
 }
