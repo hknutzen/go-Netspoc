@@ -27,7 +27,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"github.com/mailru/easyjson"
+	"github.com/json-iterator/go"
 	"io/ioutil"
 	"net"
 	"os"
@@ -2344,8 +2344,6 @@ func prtList(names []string, prt2obj name2Proto) []*proto {
 	return result
 }
 
-//go:generate easyjson Pass2.go
-//easyjson:json
 type jRouterData struct {
 	Model         string     `json:"model"`
 	ACLs          []jACLInfo `json:"acls"`
@@ -2383,7 +2381,7 @@ func prepareACLs(path string) *routerData {
 	if err != nil {
 		panic(err)
 	}
-	err = easyjson.Unmarshal(data, &jdata)
+	err = jsoniter.Unmarshal(data, &jdata)
 	if err != nil {
 		panic(err)
 	}
