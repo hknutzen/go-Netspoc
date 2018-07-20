@@ -106,28 +106,23 @@ var config_type = map[string]string {
 }
 
 func get_config_pattern(key string) string {
-	r := regexp.MustCompile(key)
 
 	for prefix, pattern := range config_type {
-		if r.MatchString("^" + prefix) {
+		r := regexp.MustCompile("^" +prefix)
+		if r.MatchString(key) {
 			return pattern
 		}
 	}
-	fmt.Println("no returns")
-	fmt.Println(config_type["_default"])
     return config_type["_default"];
 }
 
-// Meike: Besser is_config_pair?
 func check_config_pair (key string, value string) string {
+
 	pattern := get_config_pattern(key);
-	fmt.Printf("value: %s, pattern: %s\n", key, pattern)
 	r := regexp.MustCompile("^" + pattern)
 	if r.MatchString(value) {
-		fmt.Println("returns pattern")
 		return pattern
 	}
-	fmt.Println("returns empty string")
    return ""
 }
 
@@ -200,11 +195,6 @@ func read_config (dir string) map[string]string {
 	}
 
 	lines := read_file_lines(filename)
-	for num, line := range lines {
-		fmt.Printf( "%d: %s\n", num, line)
-	}
-
-
 	skip := regexp.MustCompile(`(^\s*#|^\s*$)`)
 	keep := regexp.MustCompile(`\s*(\w+)\s*=\s*(\S+);`)
 
@@ -226,7 +216,6 @@ func read_config (dir string) map[string]string {
 				fatal_err("Invalid value for " + key + " in " + filename + "," +
                           " expected '$expected'");
 			}
-
 			result[key] = value
 		} else {
 			fatal_err("Unexpected line in " + filename + ": " + line)
