@@ -2,10 +2,13 @@ package main
 
 import (
 	"os"
+	"io/ioutil"
 	"fmt"
 	"regexp"
 	"bufio"
 )
+
+type fn func(string)
 
 // Stuff from GetArgs.pm
 
@@ -126,7 +129,110 @@ func check_config_pair (key string, value string) string {
    return ""
 }
 
-// ende Stuff from GetArgs.pm
+// Stuff from File.pm
+
+
+func is_dir (path string) bool {
+	if fileinfo, err := os.Stat(path); err == nil {
+        if fileinfo.Mode().IsDir() {
+            return true
+        }
+    }
+    return false
+}
+
+// Read input from file and process it by function which is given as argument.
+func process_file (path string, parser fn){
+
+	// Meike: im Original wird die Datei als ein Sring eingelesen und verarbeitet. Das bekomme ich gerade nicht hin, daher lese ich sie jetzt
+	content, err := ioutil.ReadFile(path)
+	if err != nil {
+		fatal_err("Can't open " + path + ":")// Meike: error-Handling + err)
+	}
+	input := string(content)
+//	fmt.Println(input)
+
+
+//    # Fill buffer with content of whole file.
+//    # Content is implicitly freed when subroutine is left.
+//    local $input = <$fh>;
+//    close $fh;
+//
+	//    $parser->();
+	parser(input)
+//}
+}
+
+//func process_file_or_dir (path string, parser fn) {
+func process_file_or_dir (path string, parser fn) {
+//    my $ipv_dir = $config->{ipv6} ? 'ipv4' : 'ipv6';
+//    local $read_ipv6 = $config->{ipv6};
+
+	// Handle toplevel file.
+
+	if is_dir(path) == false {
+		fmt.Println(path + " is no dir")
+		process_file(path, parser)
+		//		process_file($path, $parser);
+//        return;
+	}
+}
+//
+//    # Recursively read files and directories.
+//    my $read_nested_files = sub {
+//        my ($path) = @_;
+//        my ($name) = ($path =~ m'([^/]*)$');
+//
+//        # Handle ipv6 / ipv4 subdirectory or file.
+//        local $read_ipv6 = $name eq $ipv_dir ? $name eq 'ipv6' : $read_ipv6;
+//
+//        # Handle private directories and files.
+//        my $next_private = $private;
+//        if ($name =~ /[.]private$/) {
+//            if ($private) {
+//                fatal_err("Nested private context is not supported:\n $path");
+//            }
+//            $next_private = $name;
+//        }
+//        local $private = $next_private;
+//
+//        if (-d $path) {
+//            opendir(my $dh, $path) or fatal_err("Can't opendir $path: $!");
+//            for my $file (sort map { Encode::decode($filename_encode, $_) }
+//                          readdir $dh)
+//            {
+//                next if $file =~ /^\./;
+//                next if $file =~ m/$config->{ignore_files}/o;
+//                my $path = "$path/$file";
+//                __SUB__->($path);
+//            }
+//            closedir $dh;
+//        }
+//        else {
+//            process_file($path, $parser);
+//        }
+//    };
+//
+//    # Handle toplevel directory.
+//    # Special handling for "config" and "raw".
+//    opendir(my $dh, $path) or fatal_err("Can't opendir $path: $!");
+//    for my $file (sort map { Encode::decode($filename_encode, $_) } readdir $dh)
+//    {
+//
+//        next if $file =~ /^\./;
+//        next if $file =~ m/$config->{ignore_files}/o;
+//
+//        # Ignore special files/directories.
+//        next if $file =~ /^(config|raw)$/;
+//
+//        my $path = "$path/$file";
+//        $read_nested_files->($path, $parser);
+//    }
+//    closedir $dh;
+//}
+//
+
+// Ende Stuff from File.pm
 
 var types = map[string]int {
 	"router"          : 1,
@@ -256,6 +362,240 @@ func setup_subst(object string, search string, replace string) {
 	}
 }
 
+// Meike: aufräumen!
+func substitute (object string, name string) string {
+	replace, ok :=  subst[object][name]
+	if !ok  {
+		return name
+	}
+	//ID host is extended by network name.
+	if object == "host" {
+		re := regexp.MustCompile(`^(id:.*)[.]([\w-]+)$`)
+		if re.MatchString(name) {
+			str := re.FindStringSubmatch(name)
+			host := str[1]
+			network := str[2]
+			r, o :=  subst["host"][host]
+			if o {
+				host = r
+				name = host + "." + network
+			}
+			r, o =  subst["network"][host]
+			if o {
+				network = r
+				name = host + "." + network
+
+			}
+			return name
+		}
+	}
+	// Reference to interface ouside the definition of router.
+	if object == "interface" {
+		re := regexp.MustCompile(`^([\w@-]+)[.]([\w-]+)((?:[.].*)?)$`)
+		if re.MatchString(name) {
+			str := re.FindStringSubmatch(name)
+			router := str[1]
+			network := str[2]
+			ext := str[3]
+			repl, exists :=  subst["router"][router]
+			if exists {
+				router = repl
+				name = router + "." + network + ext
+			}
+			repl, exists = subst["network"][network]
+			if exists {
+				network = repl
+				name = router + "." + network + ext
+			}
+			return name
+		}
+	}
+	return replace
+}
+// Meike: urspr: Reads from global variable $input - muss die global sein?
+//func process(input string) (int, string) {
+func process(input string) {
+	changed := 0
+	copy := ""
+
+	// Iteratively parse inputstring
+
+	comment := regexp.MustCompile(`(^\s*[#].*\n)`)
+	nothing := regexp.MustCompile(`^.*\n`)
+	declaration := regexp.MustCompile(`^(.*?)(\w+)(:)([-\w.\@:]+)`)
+	list := regexp. MustCompile(`^(.*?)([-\w]+)(\s* = [ \t]*)`)
+	listelem := regexp.MustCompile(`^(\s*)([-\w.\@:ßüaö]+)`)
+	comma := regexp.MustCompile(`^(\s*,\s*)`)
+
+	typelist := ""
+	index := 0
+	left_to_process := input[index:len(input)]
+
+	for index < len(input) {
+		left_to_process = input[index:len(input)]
+
+		if comment.MatchString(left_to_process) {
+			str := comment.FindStringSubmatch(left_to_process)
+			//			fmt.Println("Found Comment: " + str[0])
+			copy += str[0]
+			loc := comment.FindStringIndex(left_to_process)
+			index += loc[1]
+			continue
+		}
+		if typelist != "" {
+			if listelem.MatchString(left_to_process) {
+				str := listelem.FindStringSubmatch(left_to_process)
+				//				fmt.Println("Found Listelem: " + str[2])
+				copy += str[1]
+				name := str[2]
+				new := substitute(typelist, name)
+				copy += new
+				if new != name {
+					fmt.Printf ("substitute %s with %s\n", name, new)
+					changed++
+				}
+				loc := listelem.FindStringIndex(left_to_process)
+				index += loc[1]
+				continue
+			}
+			if comma.MatchString(left_to_process) {
+				str := comma.FindStringSubmatch(left_to_process)
+				copy += str[0]
+				loc := comma.FindStringIndex(left_to_process)
+				index += loc[1]
+				continue
+			}
+			typelist = ""
+		}
+
+		if declaration.MatchString(left_to_process) {
+			str := declaration.FindStringSubmatch(left_to_process)
+			fmt.Println("Found Declaration: " + str[2]+str[3]+str[4])
+			copy += str[1]+str[2]+str[3]
+			object := str[2]
+			name := str[4]
+			new := substitute(object, name)
+			copy += new
+			if new != name {
+				fmt.Printf ("substitute %s with %s\n", name, new)
+				changed++
+			}
+			loc := declaration.FindStringIndex(left_to_process)
+			index += loc[1]
+			continue
+		}
+		if list.MatchString(left_to_process) {
+			str := list.FindStringSubmatch(left_to_process)
+			//			fmt.Println("Found List: " + str[2]+str[3])
+			copy += str[1]+str[2]+str[3]
+			loc := list.FindStringIndex(left_to_process)
+			index += loc[1]
+			object := str[2]
+			if subst[object] != nil {
+				typelist = str[2]
+			}
+			continue
+		}
+		if nothing.MatchString(left_to_process) {
+			str := nothing.FindStringSubmatch(left_to_process)
+			copy += str[0]
+			loc := nothing.FindStringIndex(left_to_process)
+			index += loc[1]
+			continue
+		}
+		break
+
+	}
+
+	fmt.Println(copy)
+	fmt.Printf("Changed %d namse\n", changed)
+
+
+}
+//sub process {
+//    my $changed = 0;
+//    my $type_list;
+//    my $copy = '';
+//    while(1) {
+//
+//        # Ignore comment.
+//        if ($input =~ /\G (\s* [#] .* \n) /gcx) {
+//            $copy .= $1;
+//        }
+//
+//        # Handle list of names after "name = "
+//        elsif ($type_list) {
+//
+//            # Read list element.
+//            if ($input =~ /\G (\s*) ([-\w.\@:]+) /gcx) {
+//                $copy .= $1;
+//                my $name = $2;
+//                my $new = subst($type_list, $name);
+//                $copy .= $new;
+//                $changed++ if $name ne $new;
+//            }
+//
+//            # Read comma.
+//            elsif ($input =~ /\G (\s*,\s*) /gcx) {
+//                $copy .= $1;
+//            }
+//
+//            # Everything else terminates list.
+//            else {
+//                $type_list = undef;
+//            }
+//        }
+//
+//        # Find next "type:name".
+//        elsif ($input =~ /\G (.*?) (\w+) (:) ([-\w.\@:]+) /gcx) {
+//            $copy .= "$1$2$3";
+//            my $type = $2;
+//            my $name = $4;
+//            my $new = subst($type, $name);
+//            $copy .= $new;
+//            $changed++ if $name ne $new;
+//        }
+//
+//        # Find "type = name".
+//        elsif ($input =~ /\G (.*?) ([-\w]+) (\s* = [ \t]*) /gcx) {
+//            $copy .= "$1$2$3";
+//            my $type = $2;
+//            if ($subst{$type}) {
+//                $type_list = $type;
+//            }
+//        }
+//
+//        # Ignore rest of line if nothing matches.
+//        elsif($input =~ /\G (.* \n) /gcx) {
+//            $copy .= $1;
+//        }
+//
+//        # Terminate, if everything has been processed.
+//        else {
+//            last;
+//        }
+//    }
+//    return ($changed, $copy);
+//}
+
+//sub process_input {
+func process_input (input string) {
+//	fmt.Println("im parser, working on:")
+//	fmt.Println(input)
+	//	count, copy := process(input)
+	process(input)
+}
+//    my ($count, $copy) = process();
+//    $count or return;
+//    my $path = $current_file;
+//    info "$count changes in $path" if not $quiet;
+//    unlink($path) or fatal_err("Can't remove $path: $!");
+//    open(my $out, '>', $path) or fatal_err("Can't create $path: $!");
+//    print $out $copy;
+//    close $out;
+//}
+//
+
 
 func get_type_and_name(object string) (string, string){
 	r := regexp.MustCompile(`^(\w+):(.*)$`)
@@ -289,25 +629,6 @@ func setup_pattern () {
 
 }
 
-
-// Argument processing
-//
-//$_ = Encode::decode('UTF-8' , $_) for @ARGV;
-
-//my ($from_file, $help, $man);
-//GetOptions ( 'f=s' => \$from_file,
-//             'quiet!' => \$quiet,
-//	     'help|?' => \$help,
-//	     man => \$man,
-//	     ) or pod2usage(2);
-//pod2usage(1) if $help;
-//pod2usage(-exitstatus => 0, -verbose => 2) if $man;
-
-//my $path = shift @ARGV or pod2usage(2);
-//$from_file or @ARGV or pod2usage(2);
-
-
-
 func main() {
 	if len(os.Args) < 2 { //prog, path. pairs optional, needs fromfile flag.
 		fmt.Println("Usage-Meldung!")
@@ -332,6 +653,7 @@ func main() {
 //	$config = combine_config($file_config, {verbose => !$quiet});
 
 	// Do substitution.
+	process_file_or_dir(path, process_input)
 //	process_file_or_dir($path, \&process_input);
 
 }
