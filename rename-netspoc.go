@@ -130,7 +130,7 @@ func check_config_pair (key string, value string) string {
 }
 
 // Stuff from File.pm
-
+var current_file string
 
 func is_dir (path string) bool {
 	if fileinfo, err := os.Stat(path); err == nil {
@@ -144,36 +144,23 @@ func is_dir (path string) bool {
 // Read input from file and process it by function which is given as argument.
 func process_file (path string, parser fn){
 
-	// Meike: im Original wird die Datei als ein Sring eingelesen und verarbeitet. Das bekomme ich gerade nicht hin, daher lese ich sie jetzt
 	content, err := ioutil.ReadFile(path)
 	if err != nil {
-		fatal_err("Can't open " + path + ":")// Meike: error-Handling + err)
+		fatal_err("Can't open " + path + ":")
 	}
 	input := string(content)
-//	fmt.Println(input)
-
-
-//    # Fill buffer with content of whole file.
-//    # Content is implicitly freed when subroutine is left.
-//    local $input = <$fh>;
-//    close $fh;
-//
-	//    $parser->();
+	current_file = path
 	parser(input)
-//}
 }
 
-//func process_file_or_dir (path string, parser fn) {
 func process_file_or_dir (path string, parser fn) {
 //    my $ipv_dir = $config->{ipv6} ? 'ipv4' : 'ipv6';
 //    local $read_ipv6 = $config->{ipv6};
 
 	// Handle toplevel file.
-
 	if is_dir(path) == false {
 		fmt.Println(path + " is no dir")
 		process_file(path, parser)
-		//		process_file($path, $parser);
 //        return;
 	}
 }
@@ -232,7 +219,15 @@ func process_file_or_dir (path string, parser fn) {
 //}
 //
 
-// Ende Stuff from File.pm
+// Stuff from Common.pm
+
+func info (info string) {
+//    return if not $config->{verbose};
+    fmt.Fprintln(os.Stderr, info)
+}
+// Ende
+
+
 
 var types = map[string]int {
 	"router"          : 1,
@@ -272,7 +267,7 @@ func read_file_lines (path string) []string {
 	file, err := os.Open(path)
 	if err != nil {
 		fmt.Println(err)
-//Meike: die oder so!		return
+		os.Exit(1)
 	}
 
 	scanner := bufio.NewScanner(file)
@@ -362,12 +357,12 @@ func setup_subst(object string, search string, replace string) {
 	}
 }
 
-// Meike: aufräumen!
 func substitute (object string, name string) string {
 	replace, ok :=  subst[object][name]
 	if !ok  {
 		return name
 	}
+
 	//ID host is extended by network name.
 	if object == "host" {
 		re := regexp.MustCompile(`^(id:.*)[.]([\w-]+)$`)
@@ -412,14 +407,18 @@ func substitute (object string, name string) string {
 	}
 	return replace
 }
-// Meike: urspr: Reads from global variable $input - muss die global sein?
-//func process(input string) (int, string) {
-func process(input string) {
+
+func match(pattern *regexp.Regexp, string string, index int) ([]string, int) {
+	str := pattern.FindStringSubmatch(string)
+	loc := pattern.FindStringIndex(string)
+	return str, loc[1]
+}
+
+func process(input string) (int, string) {
 	changed := 0
 	copy := ""
 
 	// Iteratively parse inputstring
-
 	comment := regexp.MustCompile(`(^\s*[#].*\n)`)
 	nothing := regexp.MustCompile(`^.*\n`)
 	declaration := regexp.MustCompile(`^(.*?)(\w+)(:)([-\w.\@:]+)`)
@@ -429,24 +428,19 @@ func process(input string) {
 
 	typelist := ""
 	index := 0
-	left_to_process := input[index:len(input)]
+	var str []string
 
 	for index < len(input) {
-		left_to_process = input[index:len(input)]
+		input = input[index:]
 
-		if comment.MatchString(left_to_process) {
-			str := comment.FindStringSubmatch(left_to_process)
-			//			fmt.Println("Found Comment: " + str[0])
+	if comment.MatchString(input) {
+		str, index = match(comment, input, index)
 			copy += str[0]
-			loc := comment.FindStringIndex(left_to_process)
-			index += loc[1]
 			continue
 		}
 		if typelist != "" {
-			if listelem.MatchString(left_to_process) {
-				str := listelem.FindStringSubmatch(left_to_process)
-				//				fmt.Println("Found Listelem: " + str[2])
-				copy += str[1]
+			if listelem.MatchString(input) {
+				str, index = match(listelem, input, index)
 				name := str[2]
 				new := substitute(typelist, name)
 				copy += new
@@ -454,22 +448,18 @@ func process(input string) {
 					fmt.Printf ("substitute %s with %s\n", name, new)
 					changed++
 				}
-				loc := listelem.FindStringIndex(left_to_process)
-				index += loc[1]
 				continue
 			}
-			if comma.MatchString(left_to_process) {
-				str := comma.FindStringSubmatch(left_to_process)
+			if comma.MatchString(input) {
+				str, index = match(comma, input, index)
 				copy += str[0]
-				loc := comma.FindStringIndex(left_to_process)
-				index += loc[1]
 				continue
 			}
 			typelist = ""
 		}
 
-		if declaration.MatchString(left_to_process) {
-			str := declaration.FindStringSubmatch(left_to_process)
+		if declaration.MatchString(input) {
+			str, index = match(declaration, input, index)
 			fmt.Println("Found Declaration: " + str[2]+str[3]+str[4])
 			copy += str[1]+str[2]+str[3]
 			object := str[2]
@@ -477,125 +467,55 @@ func process(input string) {
 			new := substitute(object, name)
 			copy += new
 			if new != name {
-				fmt.Printf ("substitute %s with %s\n", name, new)
 				changed++
 			}
-			loc := declaration.FindStringIndex(left_to_process)
-			index += loc[1]
 			continue
 		}
-		if list.MatchString(left_to_process) {
-			str := list.FindStringSubmatch(left_to_process)
-			//			fmt.Println("Found List: " + str[2]+str[3])
+		if list.MatchString(input) {
+			str, index = match(list, input, index)
 			copy += str[1]+str[2]+str[3]
-			loc := list.FindStringIndex(left_to_process)
-			index += loc[1]
 			object := str[2]
 			if subst[object] != nil {
 				typelist = str[2]
 			}
 			continue
 		}
-		if nothing.MatchString(left_to_process) {
-			str := nothing.FindStringSubmatch(left_to_process)
+		if nothing.MatchString(input) {
+			str, index = match(nothing, input, index)
 			copy += str[0]
-			loc := nothing.FindStringIndex(left_to_process)
-			index += loc[1]
 			continue
 		}
 		break
-
 	}
 
-	fmt.Println(copy)
-	fmt.Printf("Changed %d namse\n", changed)
-
-
+	fmt.Println(copy) // Meike
+	fmt.Printf("Changed %d namse\n", changed) // Meike
+	return changed, copy
 }
-//sub process {
-//    my $changed = 0;
-//    my $type_list;
-//    my $copy = '';
-//    while(1) {
-//
-//        # Ignore comment.
-//        if ($input =~ /\G (\s* [#] .* \n) /gcx) {
-//            $copy .= $1;
-//        }
-//
-//        # Handle list of names after "name = "
-//        elsif ($type_list) {
-//
-//            # Read list element.
-//            if ($input =~ /\G (\s*) ([-\w.\@:]+) /gcx) {
-//                $copy .= $1;
-//                my $name = $2;
-//                my $new = subst($type_list, $name);
-//                $copy .= $new;
-//                $changed++ if $name ne $new;
-//            }
-//
-//            # Read comma.
-//            elsif ($input =~ /\G (\s*,\s*) /gcx) {
-//                $copy .= $1;
-//            }
-//
-//            # Everything else terminates list.
-//            else {
-//                $type_list = undef;
-//            }
-//        }
-//
-//        # Find next "type:name".
-//        elsif ($input =~ /\G (.*?) (\w+) (:) ([-\w.\@:]+) /gcx) {
-//            $copy .= "$1$2$3";
-//            my $type = $2;
-//            my $name = $4;
-//            my $new = subst($type, $name);
-//            $copy .= $new;
-//            $changed++ if $name ne $new;
-//        }
-//
-//        # Find "type = name".
-//        elsif ($input =~ /\G (.*?) ([-\w]+) (\s* = [ \t]*) /gcx) {
-//            $copy .= "$1$2$3";
-//            my $type = $2;
-//            if ($subst{$type}) {
-//                $type_list = $type;
-//            }
-//        }
-//
-//        # Ignore rest of line if nothing matches.
-//        elsif($input =~ /\G (.* \n) /gcx) {
-//            $copy .= $1;
-//        }
-//
-//        # Terminate, if everything has been processed.
-//        else {
-//            last;
-//        }
-//    }
-//    return ($changed, $copy);
-//}
 
 //sub process_input {
 func process_input (input string) {
-//	fmt.Println("im parser, working on:")
-//	fmt.Println(input)
-	//	count, copy := process(input)
-	process(input)
-}
-//    my ($count, $copy) = process();
-//    $count or return;
-//    my $path = $current_file;
-//    info "$count changes in $path" if not $quiet;
-//    unlink($path) or fatal_err("Can't remove $path: $!");
-//    open(my $out, '>', $path) or fatal_err("Can't create $path: $!");
-//    print $out $copy;
-//    close $out;
-//}
-//
+	count, copy := process(input)
+	if count == 0 {
+		return
+	}
 
+   path := current_file;
+	info(string(count) + "changes in " + path) // if not $quiet;
+	err := os.Remove(path)
+	if err != nil {
+		fatal_err("Can't remove " + path + ": " + err.Error())
+	}
+	file, err := os.Create(path)
+	if err != nil {
+		fatal_err("Can't create " + path + ": " + err.Error())
+	}
+	_, err = file.WriteString(copy)
+	if err != nil {
+		fatal_err("Can't write to " + path + ": " + err.Error())
+	}
+	file.Close()
+}
 
 func get_type_and_name(object string) (string, string){
 	r := regexp.MustCompile(`^(\w+):(.*)$`)
@@ -605,7 +525,6 @@ func get_type_and_name(object string) (string, string){
 	}
 	return res[1], res[2]
 }
-
 
 func setup_pattern () {
 
@@ -626,7 +545,6 @@ func setup_pattern () {
 		fmt.Println(old_type, old_name, new_name)
 		setup_subst(old_type, old_name, new_name)
 	}
-
 }
 
 func main() {
@@ -654,6 +572,4 @@ func main() {
 
 	// Do substitution.
 	process_file_or_dir(path, process_input)
-//	process_file_or_dir($path, \&process_input);
-
 }
