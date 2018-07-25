@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"regexp"
 	"bufio"
+	"path/filepath"
 )
 
 type fn func(string)
@@ -134,11 +135,11 @@ var current_file string
 
 func is_dir (path string) bool {
 	if fileinfo, err := os.Stat(path); err == nil {
-        if fileinfo.Mode().IsDir() {
+		if fileinfo.Mode().IsDir() {
             return true
         }
-    }
-    return false
+	}
+	return false
 }
 
 // Read input from file and process it by function which is given as argument.
@@ -154,70 +155,84 @@ func process_file (path string, parser fn){
 }
 
 func process_file_or_dir (path string, parser fn) {
-//    my $ipv_dir = $config->{ipv6} ? 'ipv4' : 'ipv6';
-//    local $read_ipv6 = $config->{ipv6};
 
 	// Handle toplevel file.
 	if is_dir(path) == false {
 		fmt.Println(path + " is no dir")
 		process_file(path, parser)
-//        return;
+        return;
+	} else {
+		// Handle toplevel Directory
+		files, err := ioutil.ReadDir(path)
+		for _, file := range files {
+			fmt.Println("FILE: " + file.Name())
+
+			// skip special files
+			if  (!file.Mode().IsDir() &&
+				(file.Name() == "config" || file.Name() == "raw" )) {
+				fmt.Printf("skipping %s\n", file.Name())
+				continue
+			}
+
+			//
+			hidden := regexp.MustCompile(`^\.`)
+			if (!file.Mode().IsDir() && hidden.MatchString(file.Name())) {
+				fmt.Printf("skipping %s\n", file.Name())
+				continue
+			}
+
+			// skip ignored files
+			ignore := regexp.MustCompile(config["ignore_files"])
+			if (!file.Mode().IsDir() && ignore.MatchString(file.Name())) {
+				fmt.Printf("skipping %s\n", file.Name())
+				continue
+			}
+
+			//			if file.Mode().IsDir() {
+			subpath := path + "/" + file.Name()
+				err = filepath.Walk(subpath,
+					func(subpath string, file os.FileInfo, err error) error {
+
+						// Error - handling
+						if err != nil {
+							fmt.Printf("prevent panic by handling failure accessing a path %q: %v\n", subpath, err)
+							return err
+						}
+
+						// ipv4/ipv6 subdir or file specification and private are not used
+						// within rename-netspoc
+
+						//skip hidden files
+						hidden := regexp.MustCompile(`^\.`)
+						if hidden.MatchString(file.Name()) {
+							fmt.Printf("skipping %s\n", file.Name())
+							return nil
+						}
+
+						// skip ignored files
+						ignore := regexp.MustCompile(config["ignore_files"])
+						if ignore.MatchString(file.Name()) {
+							fmt.Printf("skipping %s\n", file.Name())
+							return nil
+						}
+
+						fmt.Printf("visited: %q\n", subpath)
+						if is_dir(subpath) == false {
+							fmt.Println("processing file " + subpath)
+							process_file(subpath, parser)
+						}
+						return nil
+					})
+
+				if err != nil {
+					fmt.Printf("error walking the path %q: %v\n", subpath, err)
+				}
+//		}
+
+		}
 	}
 }
-//
-//    # Recursively read files and directories.
-//    my $read_nested_files = sub {
-//        my ($path) = @_;
-//        my ($name) = ($path =~ m'([^/]*)$');
-//
-//        # Handle ipv6 / ipv4 subdirectory or file.
-//        local $read_ipv6 = $name eq $ipv_dir ? $name eq 'ipv6' : $read_ipv6;
-//
-//        # Handle private directories and files.
-//        my $next_private = $private;
-//        if ($name =~ /[.]private$/) {
-//            if ($private) {
-//                fatal_err("Nested private context is not supported:\n $path");
-//            }
-//            $next_private = $name;
-//        }
-//        local $private = $next_private;
-//
-//        if (-d $path) {
-//            opendir(my $dh, $path) or fatal_err("Can't opendir $path: $!");
-//            for my $file (sort map { Encode::decode($filename_encode, $_) }
-//                          readdir $dh)
-//            {
-//                next if $file =~ /^\./;
-//                next if $file =~ m/$config->{ignore_files}/o;
-//                my $path = "$path/$file";
-//                __SUB__->($path);
-//            }
-//            closedir $dh;
-//        }
-//        else {
-//            process_file($path, $parser);
-//        }
-//    };
-//
-//    # Handle toplevel directory.
-//    # Special handling for "config" and "raw".
-//    opendir(my $dh, $path) or fatal_err("Can't opendir $path: $!");
-//    for my $file (sort map { Encode::decode($filename_encode, $_) } readdir $dh)
-//    {
-//
-//        next if $file =~ /^\./;
-//        next if $file =~ m/$config->{ignore_files}/o;
-//
-//        # Ignore special files/directories.
-//        next if $file =~ /^(config|raw)$/;
-//
-//        my $path = "$path/$file";
-//        $read_nested_files->($path, $parser);
-//    }
-//    closedir $dh;
-//}
-//
+
 
 // Stuff from Common.pm
 
@@ -460,7 +475,6 @@ func process(input string) (int, string) {
 
 		if declaration.MatchString(input) {
 			str, index = match(declaration, input, index)
-			fmt.Println("Found Declaration: " + str[2]+str[3]+str[4])
 			copy += str[1]+str[2]+str[3]
 			object := str[2]
 			name := str[4]
