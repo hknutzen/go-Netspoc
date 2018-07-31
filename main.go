@@ -35,11 +35,23 @@ func convertBool(x xAny) bool {
 	}
 }
 
+func getString(x xAny) string {
+	switch a := x.(type) {
+	case string:
+		return a
+	case []byte:
+		return string(a[:])
+	case int:
+		return fmt.Sprint(a)
+	default:
+		panic(fmt.Errorf("Expected string or byte slice but got %v", a))
+	}
+}
 func convertStrings(x xAny) []string {
 	a := getArray(x)
 	result := make([]string, len(a))
 	for i, elt := range a {
-		result[i] = elt.(string)
+		result[i] = getString(elt)
 	}
 	return result
 }
@@ -51,7 +63,7 @@ func getArray(x xAny) xArray {
 	case *xArray:
 		return *a
 	default:
-		panic("Expected xArray or *xArray")
+		panic(fmt.Errorf("Expected xArray or *xArray but git %v", a))
 	}
 }
 
@@ -62,7 +74,7 @@ func getMap(x xAny) xMap {
 	case *xMap:
 		return *m
 	default:
-		panic("Expected xMap or *xMap")
+		panic(fmt.Errorf("Expected xMap or *xMap but got %v", m))
 	}
 }
 
@@ -82,7 +94,7 @@ func (x *IPObj) setCommon(m xMap) {
 		x.IP = m["ip"].([]byte)
 	}
 	if up, ok := m["up"]; ok {
-		x.Up = convertNetObj(up)
+		x.Up = convertSomeObj(up)
 	}
 }
 
@@ -125,10 +137,19 @@ func convertNetwork(x xAny) *Network {
 }
 func (x *Network) network() *Network { return x }
 
-type Subnet struct {
+type NetObj struct {
 	IPObj
-	Mask    net.IPMask
 	Network *Network
+}
+func (x *NetObj) setCommon(m xMap) {
+	x.IPObj.setCommon(m)
+	x.Network = convertNetwork(m["network"])
+}
+func (x *NetObj) network() *Network { return x.Network }
+
+type Subnet struct {
+	NetObj
+	Mask    net.IPMask
 }
 
 func convertSubnet(x xAny) *Subnet {
@@ -140,10 +161,8 @@ func convertSubnet(x xAny) *Subnet {
 	m["ref"] = s
 	s.setCommon(m)
 	s.Mask = m["mask"].([]byte)
-	s.Network = convertNetwork(m["network"])
 	return s
 }
-func (x *Subnet) network() *Network { return x.Network }
 
 type Router struct {
 	Name       string
@@ -171,8 +190,7 @@ func convertRouter(x xAny) *Router {
 }
 
 type Interface struct {
-	IPObj
-	Network *Network
+	NetObj
 	Router  *Router
 }
 
@@ -184,12 +202,11 @@ func convertInterface(x xAny) *Interface {
 	i := new(Interface)
 	m["ref"] = i
 	i.setCommon(m)
-	i.Network = convertNetwork(m["network"])
+	i.Router = convertRouter(m["router"])
 	return i
 }
-func (x *Interface) network() *Network { return x.Network }
 
-func convertNetObj(x xAny) someObj {
+func convertSomeObj(x xAny) someObj {
 	m := getMap(x)
 	if o, ok := m["ref"]; ok {
 		return o.(someObj)
@@ -203,11 +220,11 @@ func convertNetObj(x xAny) someObj {
 	return convertNetwork(x)
 }
 
-func convertNetObjects(x xAny) []someObj {
+func convertSomeObjects(x xAny) []someObj {
 	a := getArray(x)
 	objects := make([]someObj, len(a))
 	for i, x := range a {
-		objects[i] = convertNetObj(x)
+		objects[i] = convertSomeObj(x)
 	}
 	return objects
 }
@@ -262,18 +279,57 @@ type modifiers struct {
 
 type proto struct {
 	name        string
-	protocol    string
+	proto       string
 	ports       [2]int
 	established bool
 	icmpType    int
 	icmpCode    int
+	modifiers   modifiers
 	up          *proto
 	localUp     *proto
 	hasNeighbor bool
-	modifiers   modifiers
 }
 
-var prtIP = &proto{name: "ip", protocol: "ip"}
+func convertProto(x xAny) *proto {
+	if x == nil {
+		return nil
+	}
+	m := getMap(x)
+	if o, ok := m["ref"]; ok {
+		return o.(*proto)
+	}
+	p := new(proto)
+	m["ref"] = p
+	p.name = getString(m["name"])
+	p.proto = getString(m["proto"])
+	if list, ok := m["ports"]; ok {
+		a := list.(xArray)
+		p.ports = [2]int{a[0].(int), a[1].(int)}
+	}
+	if _, ok := m["established"]; ok {
+		p.established = true
+	}
+	if t, ok := m["icmp_type"]; ok {
+		p.icmpType = t.(int)
+	}
+	if c, ok := m["icmp_code"]; ok {
+		p.icmpCode = c.(int)
+	}
+	if u, ok := m["up"]; ok {
+		p.up = convertProto(u)
+	}
+	return p
+}
+func convertProtos(x xAny) []*proto {
+	a := getArray(x)
+	list := make([]*proto, len(a))
+	for i, x := range a {
+		list[i] = convertProto(x)
+	}
+	return list
+}
+
+var prtIP = &proto{name: "ip", proto: "ip"}
 
 type Service struct {
 	name             string
@@ -314,8 +370,10 @@ type Rule struct {
 func convertRule(m xMap) *Rule {
 	r := new(Rule)
 	r.Deny = convertBool(m["deny"])
-	r.Src = convertNetObjects(m["src"])
-	r.Dst = convertNetObjects(m["dst"])
+	r.Src = convertSomeObjects(m["src"])
+	r.Dst = convertSomeObjects(m["dst"])
+	r.Prt = convertProtos(m["prt"])
+	r.SrcRange = convertProto(m["src_range"])
 	r.SrcPath = convertPathObj(m["src_path"])
 	r.DstPath = convertPathObj(m["dst_path"])
 	if list, ok := m["log"]; ok {
@@ -367,6 +425,10 @@ func errMsg(format string, args ...interface{}) {
 	string := "Error: " + fmt.Sprintf(format, args...)
 	fmt.Fprintln(os.Stderr, string)
 	checkAbort()
+}
+
+func progress(s string) {
+	fmt.Fprintln(os.Stderr, s)
 }
 
 type ExpandedRule struct {
@@ -446,7 +508,7 @@ func getOrigPrt(rule *ExpandedRule) *proto {
 // New relation is used in findRedundantRules.
 // We get better performance compared to original relation, because
 // transient chain from some protocol to largest protocol becomes shorter.
-func setLocalPrtRelation(rules []Rule) {
+func setLocalPrtRelation(rules []*Rule) {
 	prtMap := make(map[*proto]bool)
 	for _, rule := range rules {
 		prtList := rule.Prt
@@ -734,7 +796,8 @@ func findRedundantRules(cmpHash, chgHash ruleTree) int {
 	return count
 }
 
-func check_expanded_rules(pRules PathRules) {
+func checkExpandedRules(pRules *PathRules) {
+	progress("Checking for redundant rules")
 	var count int
 	dcount := 0
 	rcount := 0
@@ -780,7 +843,7 @@ func check_expanded_rules(pRules PathRules) {
 			count += len(expandedRules)
 			ruleTree, deleted := buildRuleTree(expandedRules)
 			dcount += deleted
-			//setLocalPrtRelation(rules);
+			setLocalPrtRelation(rules);
 			rcount += findRedundantRules(ruleTree, ruleTree)
 		}
 	}
@@ -804,7 +867,7 @@ func main() {
 		panic(err)
 	}
 	pathRules := convertPathRules(xRules)
-	_ = pathRules
+	checkExpandedRules(pathRules)
 	//	spew.Printf("%+v\n", pathRules)
 	//	fmt.Println(rules)
 }
