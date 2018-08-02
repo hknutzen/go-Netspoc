@@ -7,6 +7,7 @@ import (
 	"github.com/Sereal/Sereal/Go/sereal"
 	"net"
 	"os"
+	"sort"
 	"strings"
 )
 
@@ -17,6 +18,7 @@ type xMap = map[string]interface{}
 type xArray = []interface{}
 
 type someObj interface {
+	name() string
 	network() *Network
 	up() someObj
 	setCommon(m xMap)
@@ -84,6 +86,7 @@ type IPObj struct {
 	Up   someObj
 }
 
+func (x *IPObj) name() string { return x.Name }
 func (x *IPObj) up() someObj { return x.Up }
 func (x *IPObj) setCommon(m xMap) {
 	x.Name = m["name"].(string)
@@ -411,6 +414,11 @@ func convertPathRules(m xMap) *PathRules {
 	return rules
 }
 
+func info(format string, args ...interface{}) {
+	string := fmt.Sprintf(format, args...)
+	fmt.Fprintln(os.Stderr, string)
+}
+
 var errorCounter int = 0
 
 func checkAbort() {
@@ -427,9 +435,29 @@ func errMsg(format string, args ...interface{}) {
 	checkAbort()
 }
 
+func warnMsg(format string, args ...interface{}) {
+	string := "Warning: " + fmt.Sprintf(format, args...)
+	fmt.Fprintln(os.Stderr, string)
+}
+
+func warnOrErrMsg (errType, format string, args ...interface{}) {
+	if errType == "warn" {
+        warnMsg(format, args)
+    } else {
+        errMsg(format, args)
+    }
+}
+
 func progress(s string) {
 	fmt.Fprintln(os.Stderr, s)
 }
+
+type Config struct {
+	CheckDuplicateRules          string
+	CheckRedundantRules          string
+}
+
+var config Config
 
 type ExpandedRule struct {
 	deny      bool
@@ -453,15 +481,15 @@ func fillExpandedRule(rule *Rule) *ExpandedRule {
 	}
 }
 
-func (r *Rule) printRule() {
+func (r *Rule) print() {
 	e := fillExpandedRule(r)
 	e.src = r.Src[0]
 	e.dst = r.Dst[0]
 	e.prt = r.Prt[0]
-	e.printRule()
+	e.print()
 }
 
-func (r *ExpandedRule) printRule() string {
+func (r *ExpandedRule) print() string {
 	extra := ""
 	if r.log != "" {
 		extra += " " + r.log
@@ -479,7 +507,7 @@ func (r *ExpandedRule) printRule() string {
 		action = "permit"
 	}
 	return fmt.Sprintf("%s src=%s; dst=%s; prt=%s;%s",
-		action, r.src, r.dst, r.prt, extra)
+		action, r.src.name(), r.dst.name(), r.prt.name, extra)
 }
 
 func getOrigPrt(rule *ExpandedRule) *proto {
@@ -576,6 +604,49 @@ func collectDuplicaterules(rule, other *ExpandedRule) {
 	duplicateRules = append(duplicateRules, [2]*ExpandedRule{rule, other})
 }
 
+type twoNames [2]string
+type namePairs []twoNames
+
+func (s namePairs)sort() {
+	sort.Slice(s, func(i, j int) bool {
+		switch strings.Compare(s[i][0], s[j][0]) {
+		case -1:
+			return true
+		case 1:
+			return false
+		}
+		return strings.Compare(s[i][1], s[j][1]) == 1
+	})
+}
+
+func showDuplicateRules () {
+	if duplicateRules == nil {
+		return
+	}
+	sNames2Duplicate := make(map[twoNames][]*ExpandedRule)
+	for _, pair := range duplicateRules {
+		rule, other := pair[0], pair[1]
+		key := twoNames{rule.service.name, other.service.name}
+		sNames2Duplicate[key] = append(sNames2Duplicate[key], rule)
+	}
+	duplicateRules = nil
+
+	namePairs := make(namePairs, 0, len(sNames2Duplicate))
+	for pair := range sNames2Duplicate {
+		namePairs = append(namePairs, pair)
+	}
+	namePairs.sort()
+	for _, pair := range namePairs {
+		sName, oName := pair[0], pair[1]
+		rules := sNames2Duplicate[pair]
+		msg := "Duplicate rules in " + sName + " and " + oName + ":";
+		for _, rule := range rules {
+			msg += "\n  " + rule.print()
+		}
+		warnOrErrMsg(config.CheckDuplicateRules, msg)
+	}
+}
+
 var redundantRules [][2]*ExpandedRule
 
 func collectRedundantRules(rule, other *ExpandedRule, countRef *int) {
@@ -603,6 +674,39 @@ func collectRedundantRules(rule, other *ExpandedRule, countRef *int) {
 	}
 
 	redundantRules = append(redundantRules, [2]*ExpandedRule{rule, other})
+}
+
+func showRedundantRules () {
+	if redundantRules == nil {
+		return
+	}
+
+	sNames2Redundant := make(map[twoNames][][2]*ExpandedRule)
+	for _, pair := range redundantRules {
+		rule, other := pair[0], pair[1]
+		key := twoNames{rule.service.name, other.service.name}
+		sNames2Redundant[key] = append(sNames2Redundant[key], pair)
+	}
+	redundantRules = nil
+
+	action := config.CheckRedundantRules
+	if action == "0" {
+		return
+	}
+	namePairs := make(namePairs, 0, len(sNames2Redundant))
+	for pair := range sNames2Redundant {
+		namePairs = append(namePairs, pair)
+	}
+	namePairs.sort()
+	for _, pair := range namePairs {
+		sName, oName := pair[0], pair[1]
+		rulePairs := sNames2Redundant[pair]
+		msg := "Redundant rules in " + sName + " and " + oName + ":";
+		for _, pair := range rulePairs {
+			msg += "\n  " + pair[0].print() + "\n< " + pair[1].print()
+		}
+		warnOrErrMsg(action, msg)
+	}
 }
 
 // Expand path_rules to elementary rules.
@@ -705,8 +809,8 @@ func buildRuleTree(rules []*ExpandedRule) (ruleTree, int) {
 		if otherRule, found := leafMap[rule.prt]; found {
 			if rule.log != otherRule.log {
 				errMsg("Duplicate rules must have identical log attribute:\n",
-					" ", otherRule.printRule(), "\n",
-					" ", rule.printRule())
+					" ", otherRule.print(), "\n",
+					" ", rule.print())
 			}
 
 			// Found identical rule.
@@ -847,13 +951,11 @@ func checkExpandedRules(pRules *PathRules) {
 			rcount += findRedundantRules(ruleTree, ruleTree)
 		}
 	}
-	/*
-		show_duplicate_rules()
-		show_redundant_rules()
-		warn_unused_overlaps()
-		show_fully_redundant_rules()
-		info("Expanded rule count: $count; duplicate: $dcount; redundant: $rcount");
-	*/
+	showDuplicateRules()
+	showRedundantRules()
+//	warnUnusedOverlaps()
+//	showFullyRedundantRules()
+	info("Expanded rule count: %d; %d; %d", count, dcount, rcount)
 }
 
 func main() {
@@ -868,6 +970,4 @@ func main() {
 	}
 	pathRules := convertPathRules(xRules)
 	checkExpandedRules(pathRules)
-	//	spew.Printf("%+v\n", pathRules)
-	//	fmt.Println(rules)
 }
