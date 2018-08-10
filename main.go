@@ -347,12 +347,27 @@ type Service struct {
 }
 
 // Discard intermediate original rule.
-func convertSrvRule(x1 xAny) *Service {
-	m1 := getMap(x1)
-	x2 := m1["service"]
-	m2 := getMap(x2)
+func convertSrvRule(x xAny) *Service {
+	m := getMap(x)
+	return convertService(m["service"])
+}
+func convertService(x xAny) *Service {
+	m := getMap(x)
+	if s, ok := m["ref"]; ok {
+		return s.(*Service)
+	}
 	s := new(Service)
-	s.name = m2["name"].(string)
+	m["ref"] = s
+	s.name = m["name"].(string)
+	if list, ok := m["overlaps"]; ok {
+		xOverlaps := list.(xArray)
+		overlaps := make([]*Service, len(xOverlaps))
+		for i, xOverlap := range xOverlaps {
+			overlaps[i] = convertService(xOverlap)
+		}
+		s.Overlaps = overlaps
+		s.overlapsUsed = make(map[*Service]bool)
+	}
 	return s
 }
 
