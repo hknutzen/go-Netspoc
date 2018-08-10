@@ -280,6 +280,33 @@ type modifiers struct {
 	noCheckSupernetRules bool
 }
 
+func convertModifiers(x xAny) modifiers {
+	m := getMap(x)
+	var n modifiers
+	if _, ok := m["reversed"]; ok {
+		n.reversed = true
+	}
+	if _, ok := m["stateless"]; ok {
+		n.stateless = true
+	}
+	if _, ok := m["oneway"]; ok {
+		n.oneway = true
+	}
+	if _, ok := m["src_net"]; ok {
+		n.srcNet = true
+	}
+	if _, ok := m["dst_net"]; ok {
+		n.dstNet = true
+	}
+	if _, ok := m["overlaps"]; ok {
+		n.overlaps = true
+	}
+	if _, ok := m["no_check_supernet_rules"]; ok {
+		n.noCheckSupernetRules = true
+	}
+	return n
+}
+
 type proto struct {
 	name        string
 	proto       string
@@ -317,6 +344,9 @@ func convertProto(x xAny) *proto {
 	}
 	if c, ok := m["icmp_code"]; ok {
 		p.icmpCode = c.(int)
+	}
+	if m, ok := m["modifiers"]; ok {
+		p.modifiers =convertModifiers(m)
 	}
 	if u, ok := m["up"]; ok {
 		p.up = convertProto(u)
