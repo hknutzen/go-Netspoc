@@ -146,15 +146,15 @@ func setupIPNetRelation(ipNet2obj name2ipNet, ipv6 bool) {
 	if _, ok := ipNet2obj[net00]; !ok {
 		ipNet2obj[net00] = createIPObj(net00)
 	}
-	maskIPHash := make(map[string]map[string]*ipNet)
+	maskIPMap := make(map[string]map[string]*ipNet)
 
-	// Collect networks into maskIPHash.
+	// Collect networks into maskIPMap.
 	for _, network := range ipNet2obj {
 		ip, mask := network.IP, network.Mask
-		ipMap, ok := maskIPHash[string(mask)]
+		ipMap, ok := maskIPMap[string(mask)]
 		if !ok {
 			ipMap = make(map[string]*ipNet)
-			maskIPHash[string(mask)] = ipMap
+			maskIPMap[string(mask)] = ipMap
 		}
 		ipMap[string(ip)] = network
 	}
@@ -162,7 +162,7 @@ func setupIPNetRelation(ipNet2obj name2ipNet, ipv6 bool) {
 	// Compare networks.
 	// Go from smaller to larger networks.
 	var maskList []net.IPMask
-	for k := range maskIPHash {
+	for k := range maskIPMap {
 		maskList = append(maskList, net.IPMask(k))
 	}
 	less := func(i, j int) bool {
@@ -177,15 +177,15 @@ func setupIPNetRelation(ipNet2obj name2ipNet, ipv6 bool) {
 			break
 		}
 
-		ipHash := maskIPHash[string(mask)]
-		for ip, subnet := range ipHash {
+		ipMap := maskIPMap[string(mask)]
+		for ip, subnet := range ipMap {
 
 			// Find networks which include current subnet.
 			// upperMasks holds masks of potential supernets.
 			for _, m := range upperMasks {
 
 				i := net.IP(ip).Mask(net.IPMask(m))
-				bignet, ok := maskIPHash[string(m)][string(i)]
+				bignet, ok := maskIPMap[string(m)][string(i)]
 				if ok {
 					subnet.up = bignet
 					break
@@ -198,7 +198,7 @@ func setupIPNetRelation(ipNet2obj name2ipNet, ipv6 bool) {
 	// Go from large to smaller networks.
 	sort.Slice(maskList, less)
 	for _, mask := range maskList {
-		for _, network := range maskIPHash[string(mask)] {
+		for _, network := range maskIPMap[string(mask)] {
 			up := network.up
 			if up == nil {
 				continue
@@ -372,26 +372,26 @@ func setupPrtRelation(prt2obj name2Proto) {
 	}
 }
 
-func optimizeRedundantRules(cmpHash, chgHash ruleTree) bool {
+func optimizeRedundantRules(cmp, chg ruleTree) bool {
 	changed := false
-	for deny, chgHash := range chgHash {
+	for deny, chg := range chg {
 		for {
-			if cmpHash, found := cmpHash[deny]; found {
-				for srcRange, chgHash := range chgHash {
+			if cmp, ok := cmp[deny]; ok {
+				for srcRange, chg := range chg {
 					for {
-						if cmpHash, found := cmpHash[srcRange]; found {
-							for src, chgHash := range chgHash {
+						if cmp, ok := cmp[srcRange]; ok {
+							for src, chg := range chg {
 								for {
-									if cmpHash, found := cmpHash[src]; found {
-										for dst, chgHash := range chgHash {
+									if cmp, ok := cmp[src]; ok {
+										for dst, chg := range chg {
 											for {
-												if cmpHash, found := cmpHash[dst]; found {
-													for prt, chgRule := range chgHash {
+												if cmp, ok := cmp[dst]; ok {
+													for prt, chgRule := range chg {
 														if chgRule.deleted {
 															continue
 														}
 														for {
-															if cmpRule, found := cmpHash[prt]; found {
+															if cmpRule, ok := cmp[prt]; ok {
 																if cmpRule != chgRule &&
 																	cmpRule.log == chgRule.log {
 																	chgRule.deleted = true
@@ -460,32 +460,32 @@ type ruleTree4 map[*proto]ruleTree3
 type ruleTree map[bool]ruleTree4
 
 func (tree ruleTree2) add(dst *ipNet) ruleTree1 {
-	subtree, found := tree[dst]
-	if !found {
+	subtree, ok := tree[dst]
+	if !ok {
 		subtree = make(ruleTree1)
 		tree[dst] = subtree
 	}
 	return subtree
 }
 func (tree ruleTree3) add(src *ipNet) ruleTree2 {
-	subtree, found := tree[src]
-	if !found {
+	subtree, ok := tree[src]
+	if !ok {
 		subtree = make(ruleTree2)
 		tree[src] = subtree
 	}
 	return subtree
 }
 func (tree ruleTree4) add(srcRange *proto) ruleTree3 {
-	subtree, found := tree[srcRange]
-	if !found {
+	subtree, ok := tree[srcRange]
+	if !ok {
 		subtree = make(ruleTree3)
 		tree[srcRange] = subtree
 	}
 	return subtree
 }
 func (tree ruleTree) add(deny bool) ruleTree4 {
-	subtree, found := tree[deny]
-	if !found {
+	subtree, ok := tree[deny]
+	if !ok {
 		subtree = make(ruleTree4)
 		tree[deny] = subtree
 	}
@@ -505,7 +505,7 @@ func optimizeRules(rules ciscoRules, aclInfo *aclInfo) ciscoRules {
 
 		subtree1 :=
 			ruleTree.add(rule.deny).add(srcRange).add(rule.src).add(rule.dst)
-		if _, found := subtree1[rule.prt]; found {
+		if _, ok := subtree1[rule.prt]; ok {
 			rule.deleted = true
 			changed = true
 		} else {
@@ -808,25 +808,23 @@ func addLocalDenyRules(aclInfo *aclInfo, routerData *routerData) {
 }
 
 /*
- Purpose    : Create a list of IP/mask objects from a hash of IP/mask names.
+ Purpose    : Create a list of IP/mask objects from a map of IP/mask objects.
               Adjacent IP/mask objects are combined to larger objects.
               It is assumed, that no duplicate or redundant IP/mask objects
               are given.
- Parameters : $hash - hash with IP/mask objects as keys and
-                      rules as values.
-              $ipNet2obj - hash of all known IP/mask objects
- Result     : Returns reference to array of sorted and combined
-              IP/mask objects.
-              Parameter $hash is changed to reflect combined IP/mask objects.
+ Parameters : m - map with IP/mask objects as keys and rules as values.
+              ipNet2obj - map of all known IP/mask objects
+ Result     : Returns slice of sorted and combined IP/mask objects.
+              Parameter m is changed to reflect combined IP/mask objects.
 */
-func combineAdjacentIPMask(hash map[*ipNet]*ciscoRule, ipNet2obj name2ipNet) []*ipNet {
+func combineAdjacentIPMask(m map[*ipNet]*ciscoRule, ipNet2obj name2ipNet) []*ipNet {
 
 	// Take objects from keys of map.
 	// Sort by IP address. Adjacent networks will be adjacent elements then.
 	// Precondition is, that list already has been optimized and
 	// therefore has no redundant elements.
-	elements := make([]*ipNet, 0, len(hash))
-	for element := range hash {
+	elements := make([]*ipNet, 0, len(m))
+	for element := range m {
 		elements = append(elements, element)
 	}
 	sort.Slice(elements, func(i, j int) bool {
@@ -861,9 +859,9 @@ func combineAdjacentIPMask(hash map[*ipNet]*ciscoRule, ipNet2obj name2ipNet) []*
 		elements = elements[:len(elements)-1]
 
 		// Add new element and remove left and rigth parts.
-		hash[upElement] = hash[element1]
-		delete(hash, element1)
-		delete(hash, element2)
+		m[upElement] = m[element1]
+		delete(m, element1)
+		delete(m, element2)
 
 		if i > 0 {
 			up2Mask := net.CIDRMask(prefix-1, bits)
@@ -890,10 +888,10 @@ func combineAdjacentIPMask(hash map[*ipNet]*ciscoRule, ipNet2obj name2ipNet) []*
 const minObjectGroupSize = 2
 
 type objGroup struct {
-	name     string
-	elements []*ipNet
-	ref      *ipNet
-	hash     map[string]bool
+	name       string
+	elements   []*ipNet
+	ref        *ipNet
+	eltNameMap map[string]bool
 }
 
 // For searching efficiently for matching group.
@@ -906,10 +904,10 @@ func findObjectgroups(aclInfo *aclInfo, routerData *routerData) {
 	ipNet2obj := aclInfo.ipNet2obj
 
 	// Reuse identical groups from different ACLs.
-	if routerData.objGroupsHash == nil {
-		routerData.objGroupsHash = make(map[groupKey][]*objGroup)
+	if routerData.objGroupsMap == nil {
+		routerData.objGroupsMap = make(map[groupKey][]*objGroup)
 	}
-	key2group := routerData.objGroupsHash
+	key2group := routerData.objGroupsMap
 
 	// Leave 'intfRules' untouched, because
 	// - these rules are ignored at ASA,
@@ -924,7 +922,7 @@ func findObjectgroups(aclInfo *aclInfo, routerData *routerData) {
 			srcRange, prt *proto
 			log           string
 		}
-		groupruleTree := make(map[key]map[*ipNet]*ciscoRule)
+		groupRuleTree := make(map[key]map[*ipNet]*ciscoRule)
 
 		// Find groups of rules with identical
 		// deny, srcRange, prt, log, src/dst and different dst/src.
@@ -939,12 +937,12 @@ func findObjectgroups(aclInfo *aclInfo, routerData *routerData) {
 				this, that = that, this
 			}
 			k := key{deny, that, srcRange, prt, log}
-			href, ok := groupruleTree[k]
+			m, ok := groupRuleTree[k]
 			if !ok {
-				href = make(map[*ipNet]*ciscoRule)
-				groupruleTree[k] = href
+				m = make(map[*ipNet]*ciscoRule)
+				groupRuleTree[k] = m
 			}
-			href[this] = rule
+			m[this] = rule
 		}
 
 		// Find groups >= minObjectGroupSize,
@@ -954,18 +952,18 @@ func findObjectgroups(aclInfo *aclInfo, routerData *routerData) {
 			// Indicator, that group has already been added to some rule.
 			active bool
 
-			// object-key => rule, ...
-			hash map[*ipNet]*ciscoRule
+			// object => rule, ...
+			obj2rule map[*ipNet]*ciscoRule
 		}
 		groupGlue := make(map[*ciscoRule]*glueType)
-		for _, href := range groupruleTree {
+		for _, href := range groupRuleTree {
 
 			// href is {dst/src => rule, ...}
 			if len(href) < minObjectGroupSize {
 				continue
 			}
 
-			glue := glueType{hash: href}
+			glue := glueType{obj2rule: href}
 
 			// All this rules have identical deny, srcRange, prt
 			// and dst/src and shall be replaced by a single new
@@ -979,11 +977,11 @@ func findObjectgroups(aclInfo *aclInfo, routerData *routerData) {
 		// or define a new one
 		// or return combined network.
 		// Returns ipNet object with empty IP, representing a group.
-		getGroup := func(hash map[*ipNet]*ciscoRule) *ipNet {
+		getGroup := func(m map[*ipNet]*ciscoRule) *ipNet {
 
-			// Get sorted and combined list of objects from hash of objects.
-			// Hash is adjusted, if objects are combined.
-			elements := combineAdjacentIPMask(hash, ipNet2obj)
+			// Get sorted and combined list of objects from map of objects.
+			// Map is adjusted, if objects are combined.
+			elements := combineAdjacentIPMask(m, ipNet2obj)
 			size := len(elements)
 
 			// If all elements have been combined into one single network,
@@ -1000,14 +998,14 @@ func findObjectgroups(aclInfo *aclInfo, routerData *routerData) {
 
 			// Search group with identical elements.
 			if groups, ok := key2group[key]; ok {
-			HASH:
+			SEARCH:
 				for _, group := range groups {
-					href := group.hash
+					href := group.eltNameMap
 
 					// Check elements for equality.
-					for key := range hash {
+					for key := range m {
 						if _, ok := href[key.name]; !ok {
-							continue HASH
+							continue SEARCH
 						}
 					}
 
@@ -1018,11 +1016,11 @@ func findObjectgroups(aclInfo *aclInfo, routerData *routerData) {
 
 			// No group found, build new group.
 			group := createGroup(elements, aclInfo, routerData)
-			namesInGroup := make(map[string]bool, len(hash))
-			for element := range hash {
+			namesInGroup := make(map[string]bool, len(m))
+			for element := range m {
 				namesInGroup[element.name] = true
 			}
-			group.hash = namesInGroup
+			group.eltNameMap = namesInGroup
 			key2group[key] = append(key2group[key], group)
 			return group.ref
 		}
@@ -1035,7 +1033,7 @@ func findObjectgroups(aclInfo *aclInfo, routerData *routerData) {
 					continue
 				}
 				glue.active = true
-				groupOrObj := getGroup(glue.hash)
+				groupOrObj := getGroup(glue.obj2rule)
 				if thisIsDst {
 					rule.dst = groupOrObj
 				} else {
@@ -1107,12 +1105,12 @@ func addProtectRules(aclInfo *aclInfo, hasFinalPermit bool) {
 		if rule.prt.established {
 			continue
 		}
-		hash := rule.dst.isSupernetOfNeedProtect
-		if hash == nil {
+		m := rule.dst.isSupernetOfNeedProtect
+		if m == nil {
 			continue
 		}
 		for _, intf := range needProtect {
-			if hash[intf] {
+			if m[intf] {
 				protectMap[intf] = true
 			}
 		}
@@ -1815,8 +1813,8 @@ func findChains(aclInfo *aclInfo, routerData *routerData) {
 		return nil
 	}
 
-	// Used by $mergeSubtrees1 to find identical subtrees.
-	// Use hash for efficient lookup.
+	// Used by mergeSubtrees1 to find identical subtrees.
+	// Use map for efficient lookup.
 	type lookup struct {
 		depth int
 		size  int
@@ -2299,7 +2297,7 @@ type routerData struct {
 	logDeny         string
 	filterOnlyGroup *ipNet
 	doObjectgroup   bool
-	objGroupsHash   map[groupKey][]*objGroup
+	objGroupsMap    map[groupKey][]*objGroup
 	objGroupCounter int
 	chainCounter    int
 	chains          []*lChain
@@ -2715,9 +2713,9 @@ func printCombined(config []string, routerData *routerData, outPath string) {
 	if err != nil {
 		fatalErr("Can't open %s for writing: %v", outPath, err)
 	}
-	aclHash := make(map[string]*aclInfo)
+	aclLookup := make(map[string]*aclInfo)
 	for _, acl := range routerData.acls {
-		aclHash[acl.name] = acl
+		aclLookup[acl.name] = acl
 	}
 
 	// Print config and insert printed ACLs at aclMarker.
@@ -2725,8 +2723,8 @@ func printCombined(config []string, routerData *routerData, outPath string) {
 		if strings.HasPrefix(line, aclMarker) {
 			// Print ACL.
 			name := line[len(aclMarker):]
-			aclInfo, found := aclHash[name]
-			if !found {
+			aclInfo, ok := aclLookup[name]
+			if !ok {
 				fatalErr("Unexpected ACL %s", name)
 			}
 			printACL(fd, aclInfo, routerData)
