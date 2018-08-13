@@ -372,15 +372,6 @@ func setupPrtRelation(prt2obj name2Proto) {
 	}
 }
 
-/*
-#sub printRule {
-#    my ($rule) = @_;
-#    my ($deny, $src, $dst, $prt) = @{$rule}{qw(deny src dst prt)};
-#    my $action = $deny ? 'deny' : 'permit';
-#    return "$action $src->{name} $dst->{name} $prt->{name}";
-#}
-*/
-
 func optimizeRedundantRules(cmpHash, chgHash ruleTree) bool {
 	changed := false
 	for deny, chgHash := range chgHash {
