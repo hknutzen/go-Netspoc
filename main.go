@@ -15,7 +15,7 @@ var path = "/home/hk/out.sereal"
 
 type xAny interface{}
 type xMap = map[string]interface{}
-type xArray = []interface{}
+type xSlice = []interface{}
 
 type someObj interface {
 	name() string
@@ -26,12 +26,13 @@ type someObj interface {
 type pathObj interface{}
 
 func convertBool(x xAny) bool {
-	switch x.(type) {
+	switch b := x.(type) {
 	case nil:
 		return false
 	case string:
-		b := x != "" && x != "0"
-		return b
+		return b != "" && b != "0"
+	case int:
+		return b != 0
 	default:
 		return false
 	}
@@ -50,7 +51,7 @@ func getString(x xAny) string {
 	}
 }
 func convertStrings(x xAny) []string {
-	a := getArray(x)
+	a := getSlice(x)
 	result := make([]string, len(a))
 	for i, elt := range a {
 		result[i] = getString(elt)
@@ -58,14 +59,14 @@ func convertStrings(x xAny) []string {
 	return result
 }
 
-func getArray(x xAny) xArray {
+func getSlice(x xAny) xSlice {
 	switch a := x.(type) {
-	case xArray:
+	case xSlice:
 		return a
-	case *xArray:
+	case *xSlice:
 		return *a
 	default:
-		panic(fmt.Errorf("Expected xArray or *xArray but git %v", a))
+		panic(fmt.Errorf("Expected xSlice or *xSlice but got %v", a))
 	}
 }
 
@@ -121,7 +122,7 @@ func convertNetwork(x xAny) *Network {
 		n.Mask = m["mask"].([]byte)
 	}
 	if list, ok := m["subnets"]; ok {
-		xSubnets := list.(xArray)
+		xSubnets := list.(xSlice)
 		subnets := make([]*Subnet, len(xSubnets))
 		for i, xSubnet := range xSubnets {
 			subnets[i] = convertSubnet(xSubnet)
@@ -129,7 +130,7 @@ func convertNetwork(x xAny) *Network {
 		n.Subnets = subnets
 	}
 	if list, ok := m["interfaces"]; ok {
-		xInterfaces := list.(xArray)
+		xInterfaces := list.(xSlice)
 		interfaces := make([]*Interface, len(xInterfaces))
 		for i, xInterface := range xInterfaces {
 			interfaces[i] = convertInterface(xInterface)
@@ -182,7 +183,7 @@ func convertRouter(x xAny) *Router {
 	m["ref"] = r
 	r.Name = m["name"].(string)
 	if list, ok := m["interfaces"]; ok {
-		xInterfaces := list.(xArray)
+		xInterfaces := list.(xSlice)
 		interfaces := make([]*Interface, len(xInterfaces))
 		for i, xInterface := range xInterfaces {
 			interfaces[i] = convertInterface(xInterface)
@@ -224,7 +225,7 @@ func convertSomeObj(x xAny) someObj {
 }
 
 func convertSomeObjects(x xAny) []someObj {
-	a := getArray(x)
+	a := getSlice(x)
 	objects := make([]someObj, len(a))
 	for i, x := range a {
 		objects[i] = convertSomeObj(x)
@@ -246,7 +247,7 @@ func convertZone(x xAny) *Zone {
 	m["ref"] = z
 	z.Name = m["name"].(string)
 	if list, ok := m["networks"]; ok {
-		xNetworks := list.(xArray)
+		xNetworks := list.(xSlice)
 		networks := make([]*Network, len(xNetworks))
 		for i, xNetwork := range xNetworks {
 			networks[i] = convertNetwork(xNetwork)
@@ -310,14 +311,18 @@ func convertModifiers(x xAny) modifiers {
 type proto struct {
 	name        string
 	proto       string
-	ports       [2]int
-	established bool
 	icmpType    int
 	icmpCode    int
 	modifiers   modifiers
+	src *proto
+	dst *proto
+	main *proto
+	ports       [2]int
+	established bool
 	up          *proto
 	localUp     *proto
 	hasNeighbor bool
+	isUsed bool
 }
 
 func convertProto(x xAny) *proto {
@@ -332,13 +337,6 @@ func convertProto(x xAny) *proto {
 	m["ref"] = p
 	p.name = getString(m["name"])
 	p.proto = getString(m["proto"])
-	if list, ok := m["ports"]; ok {
-		a := list.(xArray)
-		p.ports = [2]int{a[0].(int), a[1].(int)}
-	}
-	if _, ok := m["established"]; ok {
-		p.established = true
-	}
 	if t, ok := m["icmp_type"]; ok {
 		p.icmpType = t.(int)
 	}
@@ -346,18 +344,52 @@ func convertProto(x xAny) *proto {
 		p.icmpCode = c.(int)
 	}
 	if m, ok := m["modifiers"]; ok {
-		p.modifiers =convertModifiers(m)
+		p.modifiers = convertModifiers(m)
+	}
+	if list, ok := m["ports"]; ok {
+		a := list.(xSlice)
+		p.ports = [2]int{a[0].(int), a[1].(int)}
+	}
+	if _, ok := m["established"]; ok {
+		p.established = true
 	}
 	if u, ok := m["up"]; ok {
 		p.up = convertProto(u)
 	}
+	p.src = convertProto(m["src_range"])
+	p.dst = convertProto(m["dst_range"])
+	p.main = convertProto(m["main"])
 	return p
 }
 func convertProtos(x xAny) []*proto {
-	a := getArray(x)
+	a := getSlice(x)
 	list := make([]*proto, len(a))
 	for i, x := range a {
 		list[i] = convertProto(x)
+	}
+	return list
+}
+
+func convertProtoOrName (x xAny) protoOrName {
+	switch u := x.(type) {
+	case xSlice:
+	case *xSlice:
+		return convertStrings(x)
+	case xMap:
+	case *xMap:
+		return convertProto(x)
+	default:
+		panic(fmt.Errorf("Expected (*)xSlice or xMap but got %v", u))
+	}
+	return nil
+}
+		
+	
+func convertProtoOrNames (x xAny) []protoOrName {
+	a := getSlice(x)
+	list := make([]protoOrName, len(a))
+	for i, x := range a {
+		list[i] = convertProtoOrName(x)
 	}
 	return list
 }
@@ -372,15 +404,8 @@ type Service struct {
 	hasSameDupl      map[*Service]bool
 	Overlaps         []*Service
 	overlapsUsed     map[*Service]bool
-	srcRange2origPrt map[*proto]map[*proto]*proto
-	prt2origPrt      map[*proto]*proto
 }
 
-// Discard intermediate original rule.
-func convertSrvRule(x xAny) *Service {
-	m := getMap(x)
-	return convertService(m["service"])
-}
 func convertService(x xAny) *Service {
 	m := getMap(x)
 	if s, ok := m["ref"]; ok {
@@ -390,7 +415,7 @@ func convertService(x xAny) *Service {
 	m["ref"] = s
 	s.name = m["name"].(string)
 	if list, ok := m["overlaps"]; ok {
-		xOverlaps := list.(xArray)
+		xOverlaps := list.(xSlice)
 		overlaps := make([]*Service, len(xOverlaps))
 		for i, xOverlap := range xOverlaps {
 			overlaps[i] = convertService(xOverlap)
@@ -401,18 +426,36 @@ func convertService(x xAny) *Service {
 	return s
 }
 
+func convertUnexpRule(x xAny) *UnexpRule {
+	m := getMap(x)
+	if r, ok := m["ref"]; ok {
+		return r.(*UnexpRule)
+	}
+	r := new(UnexpRule)
+	m["ref"] = r
+	r.Service = convertService(m["service"])
+	r.Prt = convertProtoOrNames(m["prt"])
+	return r
+}
+
+type UnexpRule struct {
+	Prt           []protoOrName
+	Service       *Service
+}
+	
 type Rule struct {
 	Deny          bool
 	Src           []someObj
 	Dst           []someObj
 	Prt           []*proto
 	SrcRange      *proto
-	Service       *Service
 	Log           string
+	Rule          *UnexpRule
 	SrcPath       pathObj
 	DstPath       pathObj
 	Stateless     bool
 	StatelessICMP bool
+	Overlaps      bool
 }
 
 func convertRule(m xMap) *Rule {
@@ -424,18 +467,17 @@ func convertRule(m xMap) *Rule {
 	r.SrcRange = convertProto(m["src_range"])
 	r.SrcPath = convertPathObj(m["src_path"])
 	r.DstPath = convertPathObj(m["dst_path"])
-	if list, ok := m["log"]; ok {
-		// Join for simpler comparison.
-		// Tags must have been sorted already.
-		r.Log = strings.Join(convertStrings(list), ",")
+	if log, ok := m["log"]; ok {
+		r.Log = getString(log)
 	}
 	r.Stateless = convertBool(m["stateless"])
 	r.StatelessICMP = convertBool(m["stateless_icmp"])
-	r.Service = convertSrvRule(m["rule"])
+	r.Overlaps = convertBool(m["overlaps"])
+	r.Rule = convertUnexpRule(m["rule"])
 	return r
 }
 
-func convertRules(a xArray) []*Rule {
+func convertRules(a xSlice) []*Rule {
 	rules := make([]*Rule, len(a))
 	for i, x := range a {
 		rules[i] = convertRule(x.(xMap))
@@ -451,10 +493,10 @@ type PathRules struct {
 func convertPathRules(m xMap) *PathRules {
 	rules := new(PathRules)
 	if v := m["permit"]; v != nil {
-		rules.Permit = convertRules(v.(xArray))
+		rules.Permit = convertRules(v.(xSlice))
 	}
 	if v := m["deny"]; v != nil {
-		rules.Deny = convertRules(v.(xArray))
+		rules.Deny = convertRules(v.(xSlice))
 	}
 	return rules
 }
@@ -487,9 +529,9 @@ func warnMsg(format string, args ...interface{}) {
 
 func warnOrErrMsg (errType, format string, args ...interface{}) {
 	if errType == "warn" {
-        warnMsg(format, args)
+        warnMsg(format, args...)
     } else {
-        errMsg(format, args)
+        errMsg(format, args...)
     }
 }
 
@@ -504,6 +546,78 @@ type Config struct {
 
 var config Config
 
+type protoOrName interface{}
+type ProtoList []*proto
+
+func (l ProtoList)push(p *proto) {
+	l = append(l, p)
+}
+
+var protocols map[string]*proto
+
+type ProtoGroup struct {
+	pairs []protoOrName
+	elements []*proto
+	recursive bool
+	isUsed bool
+}
+var protocolgroups map[string]*ProtoGroup
+
+func expandProtocols(list []protoOrName, context string) []*proto {
+	var result ProtoList
+	for _, pair := range list {
+		switch p := pair.(type) {
+			
+		// Handle anonymous protocol.
+		case *proto:
+			result.push(p)
+
+		case [2]string:
+			typ, name := p[0], p[1]
+			switch typ {
+			case "protocol":
+            if prt, ok := protocols["name"]; ok {
+					result.push(prt)
+
+					// Currently needed by external program 'cut-netspoc'.
+					prt.isUsed = true
+            } else {
+					errMsg("Can't resolve reference to %s:%s in %s",
+						typ, name, context)
+            }
+			case "protocolgroup":
+            if prtgroup, ok := protocolgroups["name"]; ok {
+					if prtgroup.recursive {
+						errMsg("Found recursion in definition of %s", context)
+						prtgroup.elements = nil
+
+					// Check if it has already been converted
+               // from names to references.
+					} else if !prtgroup.isUsed {
+						prtgroup.isUsed = true
+
+						// Detect recursive definitions.
+						prtgroup.recursive = true
+						prtgroup.elements =
+							expandProtocols(prtgroup.pairs, typ+":"+name)
+						prtgroup.recursive = false
+					}
+					for _, prt := range prtgroup.elements {
+						result.push(prt)
+					}
+            } else {
+					errMsg("Can't resolve reference to %s:%s in %s",
+						typ, name, context)
+            }
+			default:
+            errMsg("Unknown type of  %s:%s in %s",
+					typ, name, context)
+			}
+		}
+	}
+	return result
+}
+
 type ExpandedRule struct {
 	deny      bool
 	stateless bool
@@ -512,8 +626,9 @@ type ExpandedRule struct {
 	srcRange  *proto
 	prt       *proto
 	log       string
-	service   *Service
+	rule      *UnexpRule
 	redundant bool
+	overlaps  bool
 }
 
 func fillExpandedRule(rule *Rule) *ExpandedRule {
@@ -522,7 +637,8 @@ func fillExpandedRule(rule *Rule) *ExpandedRule {
 		stateless: rule.Stateless,
 		log:       rule.Log,
 		srcRange:  rule.SrcRange,
-		service:   rule.Service,
+		rule:      rule.Rule,
+		overlaps:  rule.Overlaps,
 	}
 }
 
@@ -542,8 +658,8 @@ func (r *ExpandedRule) print() string {
 	if r.stateless {
 		extra += " stateless"
 	}
-	if r.service != nil {
-		extra += " of " + r.service.name
+	if r.rule.Service != nil {
+		extra += " of " + r.rule.Service.name
 	}
 	var action string
 	if r.deny {
@@ -551,25 +667,50 @@ func (r *ExpandedRule) print() string {
 	} else {
 		action = "permit"
 	}
+	origPrt := getOrigPrt(r)
 	return fmt.Sprintf("%s src=%s; dst=%s; prt=%s;%s",
-		action, r.src.name(), r.dst.name(), r.prt.name, extra)
+		action, r.src.name(), r.dst.name(), origPrt.name, extra)
+}
+
+func isSubRange(p *proto, o *proto) bool {
+	l1, h1 := p.ports[0], p.ports[1]
+	l2, h2 := o.ports[0], o.ports[1]
+	return l2 <= l1 && h1 <= h2
 }
 
 func getOrigPrt(rule *ExpandedRule) *proto {
 	prt := rule.prt
-	srcRange := rule.srcRange
-	service := rule.service
-	var orig *proto
-	if srcRange != nil {
-		orig = service.srcRange2origPrt[srcRange][prt]
-	} else {
-		orig = service.prt2origPrt[prt]
+	proto := prt.proto
+	oRule := rule.rule
+	service := oRule.Service
+	list := expandProtocols(oRule.Prt, service.name)
+	for _, oPrt := range list {
+		if proto != oPrt.proto {
+			continue
+		}
+		switch oPrt.proto {
+		case "tcp":
+		case "udp":
+			if !isSubRange(prt, oPrt.dst) {
+				continue
+			}
+			srcRange := rule.srcRange
+			if (srcRange == nil) != (oPrt.src == nil) {
+				continue
+			} else if srcRange == nil {
+				return oPrt
+			} else if isSubRange(srcRange, oPrt.src) {
+				return oPrt
+			}
+		default:
+			if mainPrt := oPrt.main; main != nil {
+				if mainPrt == prt {
+					return oPrt
+				}
+			}
+		}
 	}
-	if orig != nil {
-		return orig
-	} else {
-		return prt
-	}
+	return prt
 }
 
 /*########################################################################
@@ -606,7 +747,7 @@ func setLocalPrtRelation(rules []*Rule) {
 var duplicateRules [][2]*ExpandedRule
 
 func collectDuplicaterules(rule, other *ExpandedRule) {
-	service := rule.service
+	service := rule.rule.Service
 
 	// Mark duplicate rules in both services.
 
@@ -617,7 +758,7 @@ func collectDuplicaterules(rule, other *ExpandedRule) {
 	// redundandant.
 	rule.redundant = true
 	service.duplicateCount++
-	oservice := other.service
+	oservice := other.rule.Service
 	if !other.redundant {
 		oservice.duplicateCount++
 	}
@@ -640,9 +781,7 @@ func collectDuplicaterules(rule, other *ExpandedRule) {
 			return
 		}
 	}
-	prt1 := getOrigPrt(rule)
-	prt2 := getOrigPrt(other)
-	if prt1.modifiers.overlaps && prt2.modifiers.overlaps {
+	if rule.overlaps && other.overlaps {
 		return
 	}
 
@@ -671,7 +810,7 @@ func showDuplicateRules () {
 	sNames2Duplicate := make(map[twoNames][]*ExpandedRule)
 	for _, pair := range duplicateRules {
 		rule, other := pair[0], pair[1]
-		key := twoNames{rule.service.name, other.service.name}
+		key := twoNames{rule.rule.Service.name, other.rule.Service.name}
 		sNames2Duplicate[key] = append(sNames2Duplicate[key], rule)
 	}
 	duplicateRules = nil
@@ -695,7 +834,7 @@ func showDuplicateRules () {
 var redundantRules [][2]*ExpandedRule
 
 func collectRedundantRules(rule, other *ExpandedRule, countRef *int) {
-	service := rule.service
+	service := rule.rule.Service
 
 	// Count each redundant rule only once.
 	if !rule.redundant {
@@ -704,13 +843,11 @@ func collectRedundantRules(rule, other *ExpandedRule, countRef *int) {
 		service.redundantCount++
 	}
 
-	prt1 := getOrigPrt(rule)
-	prt2 := getOrigPrt(other)
-	if prt1.modifiers.overlaps && prt2.modifiers.overlaps {
+	if rule.overlaps && other.overlaps {
 		return
 	}
 
-	oservice := other.service
+	oservice := other.rule.Service
 	for _, overlap := range service.Overlaps {
 		if oservice == overlap {
 			service.overlapsUsed[overlap] = true
@@ -729,7 +866,7 @@ func showRedundantRules () {
 	sNames2Redundant := make(map[twoNames][][2]*ExpandedRule)
 	for _, pair := range redundantRules {
 		rule, other := pair[0], pair[1]
-		key := twoNames{rule.service.name, other.service.name}
+		key := twoNames{rule.rule.Service.name, other.rule.Service.name}
 		sNames2Redundant[key] = append(sNames2Redundant[key], pair)
 	}
 	redundantRules = nil
@@ -758,7 +895,7 @@ func showRedundantRules () {
 func expandRules(rules []*Rule) []*ExpandedRule {
 	var result []*ExpandedRule
 	for _, rule := range rules {
-		service := rule.Service
+		service := rule.Rule.Service
 		for _, src := range rule.Src {
 			for _, dst := range rule.Dst {
 				for _, prt := range rule.Prt {
@@ -1000,7 +1137,8 @@ func checkExpandedRules(pRules *PathRules) {
 	showRedundantRules()
 //	warnUnusedOverlaps()
 //	showFullyRedundantRules()
-	info("Expanded rule count: %d; %d; %d", count, dcount, rcount)
+	info("Expanded rule count: %d; duplicate %d; redundant %d",
+		count, dcount, rcount)
 }
 
 func main() {
