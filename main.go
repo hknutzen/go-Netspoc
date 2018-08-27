@@ -368,6 +368,14 @@ func convertProtos(x xAny) []*proto {
 	}
 	return list
 }
+func convertProtoMap(x xAny) map[string]*proto {
+	m := getMap(x)
+	n := make(map[string]*proto)
+	for name, xProto := range m {
+		n[name] = convertProto(xProto)
+	}
+	return n
+}
 
 func convertProtoOrName (x xAny) protoOrName {
 	switch u := x.(type) {
@@ -397,6 +405,7 @@ var prtIP = &proto{name: "ip", proto: "ip"}
 
 type Service struct {
 	name             string
+	disabled         bool
 	ruleCount        int
 	duplicateCount   int
 	redundantCount   int
@@ -423,6 +432,14 @@ func convertService(x xAny) *Service {
 		s.overlapsUsed = make(map[*Service]bool)
 	}
 	return s
+}
+func convertServiceMap(x xAny) map[string]*Service {
+	m := getMap(x)
+	n := make(map[string]*Service)
+	for name, xService := range m {
+		n[name] = convertService(xService)
+	}
+	return n
 }
 
 func convertUnexpRule(x xAny) *UnexpRule {
@@ -489,7 +506,8 @@ type PathRules struct {
 	Deny   []*Rule
 }
 
-func convertPathRules(m xMap) *PathRules {
+func convertPathRules(x xAny) *PathRules {
+	m := getMap(x)
 	rules := new(PathRules)
 	if v := m["permit"]; v != nil {
 		rules.Permit = convertRules(v.(xSlice))
@@ -500,16 +518,10 @@ func convertPathRules(m xMap) *PathRules {
 	return rules
 }
 
-func info(format string, args ...interface{}) {
-	if config.Verbose {
-		string := fmt.Sprintf(format, args...)
-		fmt.Fprintln(os.Stderr, string)
-	}
-}
-
 type Config struct {
 	CheckDuplicateRules          string
 	CheckRedundantRules          string
+	CheckFullyRedundantRules     string
 	Verbose                      bool
 	TimeStamps                   bool
 }
@@ -517,10 +529,18 @@ type Config struct {
 var config  = Config{
 	CheckDuplicateRules: "warn",
 	CheckRedundantRules: "warn",
+	CheckFullyRedundantRules: "warn",
 }
 
 var startTime time.Time
 var errorCounter int = 0
+
+func info(format string, args ...interface{}) {
+	if config.Verbose {
+		string := fmt.Sprintf(format, args...)
+		fmt.Fprintln(os.Stderr, string)
+	}
+}
 
 func checkAbort() {
 	errorCounter++
@@ -870,7 +890,7 @@ func collectRedundantRules(rule, other *ExpandedRule, countRef *int) {
 	redundantRules = append(redundantRules, [2]*ExpandedRule{rule, other})
 }
 
-func showRedundantRules () {
+func showRedundantRules() {
 	if redundantRules == nil {
 		return
 	}
@@ -900,6 +920,61 @@ func showRedundantRules () {
 			msg += "\n  " + pair[0].print() + "\n< " + pair[1].print()
 		}
 		warnOrErrMsg(action, msg)
+	}
+}
+
+var services map[string]*Service
+
+func showFullyRedundantRules() {
+	action := config.CheckFullyRedundantRules
+	if action == "0" {
+		return
+	}
+	var errList []string
+	keep := make(map[*Service]bool)
+	for _, service := range services {
+		if keep[service] {
+			continue
+		}
+		ruleCount := service.ruleCount
+		if ruleCount == 0 {
+			continue
+		}
+		if service.duplicateCount + service.redundantCount != ruleCount {
+			continue
+		}
+		for service := range service.hasSameDupl {
+			keep[service] = true
+		}
+		errList = append(errList, service.name + " is fully redundant")
+	}
+	sort.Strings(errList)
+	for _, msg := range errList {
+		warnOrErrMsg(action, msg)
+	}
+}
+
+func warnUnusedOverlaps() {
+	var errList []string
+	for _, service := range services {
+		if service.disabled {
+			continue
+		}
+		if overlaps := service.Overlaps; overlaps != nil {
+			used := service.overlapsUsed
+			for _, overlap := range overlaps {
+				if overlap.disabled || used[overlap] {
+					continue
+				}
+				errList = append(errList,
+					fmt.Sprintf("Useless 'overlaps = %s'  in %s",
+						overlap.name, service.name))
+			}
+		}
+	}
+	sort.Strings(errList)
+	for _, msg := range errList {
+		warnMsg(msg)
 	}
 }
 
@@ -1147,23 +1222,25 @@ func checkExpandedRules(pRules *PathRules) {
 	}
 	showDuplicateRules()
 	showRedundantRules()
-//	warnUnusedOverlaps()
-//	showFullyRedundantRules()
+	warnUnusedOverlaps()
+	showFullyRedundantRules()
 	info("Expanded rule count: %d; duplicate %d; redundant %d",
 		count, dcount, rcount)
 }
 
 func main() {
+	startTime = time.Now()
 	bytes, err := ioutil.ReadAll(os.Stdin)
 	if err != nil {
 		panic(err)
 	}
-	var xRules = make(xMap)
-	err = sereal.Unmarshal(bytes, &xRules)
+	var xData xSlice
+	err = sereal.Unmarshal(bytes, &xData)
 	if err != nil {
 		panic(err)
 	}
-	startTime = time.Now()
-	pathRules := convertPathRules(xRules)
+	protocols = convertProtoMap(xData[0])
+	services = convertServiceMap(xData[1])
+	pathRules := convertPathRules(xData[2])
 	checkExpandedRules(pathRules)
 }
