@@ -9,9 +9,8 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 )
-
-var path = "/home/hk/out.sereal"
 
 type xAny interface{}
 type xMap = map[string]interface{}
@@ -502,10 +501,25 @@ func convertPathRules(m xMap) *PathRules {
 }
 
 func info(format string, args ...interface{}) {
-	string := fmt.Sprintf(format, args...)
-	fmt.Fprintln(os.Stderr, string)
+	if config.Verbose {
+		string := fmt.Sprintf(format, args...)
+		fmt.Fprintln(os.Stderr, string)
+	}
 }
 
+type Config struct {
+	CheckDuplicateRules          string
+	CheckRedundantRules          string
+	Verbose                      bool
+	TimeStamps                   bool
+}
+
+var config  = Config{
+	CheckDuplicateRules: "warn",
+	CheckRedundantRules: "warn",
+}
+
+var startTime time.Time
 var errorCounter int = 0
 
 func checkAbort() {
@@ -535,16 +549,14 @@ func warnOrErrMsg (errType, format string, args ...interface{}) {
     }
 }
 
-func progress(s string) {
-	fmt.Fprintln(os.Stderr, s)
+func progress(msg string) {
+	if config.Verbose {
+		if config.TimeStamps {
+			msg = fmt.Sprintf("%.0fs %s", time.Since(startTime).Seconds(), msg)
+		}
+		info(msg)
+	}
 }
-
-type Config struct {
-	CheckDuplicateRules          string
-	CheckRedundantRules          string
-}
-
-var config Config
 
 type protoOrName interface{}
 type ProtoList []*proto
@@ -883,7 +895,7 @@ func showRedundantRules () {
 	for _, pair := range namePairs {
 		sName, oName := pair[0], pair[1]
 		rulePairs := sNames2Redundant[pair]
-		msg := "Redundant rules in " + sName + " and " + oName + ":";
+		msg := "Redundant rules in " + sName + " compared to " + oName + ":";
 		for _, pair := range rulePairs {
 			msg += "\n  " + pair[0].print() + "\n< " + pair[1].print()
 		}
@@ -1142,7 +1154,7 @@ func checkExpandedRules(pRules *PathRules) {
 }
 
 func main() {
-	bytes, err := ioutil.ReadFile(path)
+	bytes, err := ioutil.ReadAll(os.Stdin)
 	if err != nil {
 		panic(err)
 	}
@@ -1151,6 +1163,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	startTime = time.Now()
 	pathRules := convertPathRules(xRules)
 	checkExpandedRules(pathRules)
 }
