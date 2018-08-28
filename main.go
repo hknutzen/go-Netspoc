@@ -828,7 +828,7 @@ func (s namePairs)sort() {
 		case 1:
 			return false
 		}
-		return strings.Compare(s[i][1], s[j][1]) == 1
+		return strings.Compare(s[i][1], s[j][1]) == -1
 	})
 }
 
