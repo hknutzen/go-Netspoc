@@ -345,7 +345,7 @@ func convertProto(x xAny) *proto {
 	if m, ok := m["modifiers"]; ok {
 		p.modifiers = convertModifiers(m)
 	}
-	if list, ok := m["ports"]; ok {
+	if list, ok := m["range"]; ok {
 		a := list.(xSlice)
 		p.ports = [2]int{a[0].(int), a[1].(int)}
 	}
@@ -379,11 +379,9 @@ func convertProtoMap(x xAny) map[string]*proto {
 
 func convertProtoOrName (x xAny) protoOrName {
 	switch u := x.(type) {
-	case xSlice:
-	case *xSlice:
+	case xSlice, *xSlice:
 		return convertStrings(x)
-	case xMap:
-	case *xMap:
+	case xMap, *xMap:
 		return convertProto(x)
 	default:
 		panic(fmt.Errorf("Expected (*)xSlice or xMap but got %v", u))
@@ -581,8 +579,8 @@ func progress(msg string) {
 type protoOrName interface{}
 type ProtoList []*proto
 
-func (l ProtoList)push(p *proto) {
-	l = append(l, p)
+func (l *ProtoList)push(p *proto) {
+	*l = append(*l, p)
 }
 
 var protocols map[string]*proto
@@ -596,7 +594,7 @@ type ProtoGroup struct {
 var protocolgroups map[string]*ProtoGroup
 
 func expandProtocols(list []protoOrName, context string) []*proto {
-	var result ProtoList
+	result := make(ProtoList, 0)
 	for _, pair := range list {
 		switch p := pair.(type) {
 			
@@ -604,11 +602,11 @@ func expandProtocols(list []protoOrName, context string) []*proto {
 		case *proto:
 			result.push(p)
 
-		case [2]string:
+		case []string:
 			typ, name := p[0], p[1]
 			switch typ {
 			case "protocol":
-            if prt, ok := protocols["name"]; ok {
+            if prt, ok := protocols[name]; ok {
 					result.push(prt)
 
 					// Currently needed by external program 'cut-netspoc'.
@@ -618,7 +616,7 @@ func expandProtocols(list []protoOrName, context string) []*proto {
 						typ, name, context)
             }
 			case "protocolgroup":
-            if prtgroup, ok := protocolgroups["name"]; ok {
+            if prtgroup, ok := protocolgroups[name]; ok {
 					if prtgroup.recursive {
 						errMsg("Found recursion in definition of %s", context)
 						prtgroup.elements = nil
@@ -721,8 +719,7 @@ func getOrigPrt(rule *ExpandedRule) *proto {
 			continue
 		}
 		switch oPrt.proto {
-		case "tcp":
-		case "udp":
+		case "tcp", "udp":
 			if !isSubRange(prt, oPrt.dst) {
 				continue
 			}
@@ -1230,7 +1227,14 @@ func checkExpandedRules(pRules *PathRules) {
 
 func main() {
 	startTime = time.Now()
-	bytes, err := ioutil.ReadAll(os.Stdin)
+	var bytes []byte
+	var err error
+	if len(os.Args) > 1 {
+		name := os.Args[1]
+		bytes, err = ioutil.ReadFile(name)
+	} else {
+		bytes, err = ioutil.ReadAll(os.Stdin)
+	}
 	if err != nil {
 		panic(err)
 	}
