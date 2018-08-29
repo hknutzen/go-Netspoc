@@ -912,10 +912,13 @@ func showRedundantRules() {
 	for _, pair := range namePairs {
 		sName, oName := pair[0], pair[1]
 		rulePairs := sNames2Redundant[pair]
-		msg := "Redundant rules in " + sName + " compared to " + oName + ":";
+		msg := "Redundant rules in " + sName + " compared to " + oName + ":\n  ";
+		var list []string
 		for _, pair := range rulePairs {
-			msg += "\n  " + pair[0].print() + "\n< " + pair[1].print()
+			list = append(list, pair[0].print() + "\n< " + pair[1].print())
 		}
+		sort.Strings(list)
+		msg += strings.Join(list, "\n  ")
 		warnOrErrMsg(action, msg)
 	}
 }
@@ -1122,7 +1125,7 @@ func findRedundantRules(cmpHash, chgHash ruleTree) int {
 																				collectRedundantRules(chgRule, cmpRule, &count)
 																			}
 																		}
-																		prt = prt.up
+																		prt = prt.localUp
 																		if prt == nil {
 																			break
 																		}
@@ -1245,6 +1248,7 @@ func main() {
 	}
 	protocols = convertProtoMap(xData[0])
 	services = convertServiceMap(xData[1])
-	pathRules := convertPathRules(xData[2])
+	prtIP = convertProto(xData[2])
+	pathRules := convertPathRules(xData[3])
 	checkExpandedRules(pathRules)
 }
