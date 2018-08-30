@@ -775,7 +775,7 @@ func setLocalPrtRelation(rules []*Rule) {
 
 var duplicateRules [][2]*ExpandedRule
 
-func collectDuplicaterules(rule, other *ExpandedRule) {
+func collectDuplicateRules(rule, other *ExpandedRule) {
 	service := rule.rule.Service
 
 	// Mark duplicate rules in both services.
@@ -795,7 +795,13 @@ func collectDuplicaterules(rule, other *ExpandedRule) {
 
 	// Link both services, so we later show only one of both service as
 	// redundant.
+	if service.hasSameDupl == nil {
+		service.hasSameDupl = make(map[*Service]bool)
+	}
 	service.hasSameDupl[oservice] = true
+	if oservice.hasSameDupl == nil {
+		oservice.hasSameDupl = make(map[*Service]bool)
+	}
 	oservice.hasSameDupl[service] = true
 
 	for _, overlap := range service.Overlaps {
@@ -1083,7 +1089,7 @@ func buildRuleTree(rules []*ExpandedRule) (ruleTree, int) {
 			}
 
 			// Found identical rule.
-			//			collectDuplicateRules(rule, otherRule)
+			collectDuplicateRules(rule, otherRule)
 			count++
 		} else {
 			leafMap[rule.prt] = rule
