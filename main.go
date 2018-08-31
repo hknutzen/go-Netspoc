@@ -683,7 +683,7 @@ func (r *Rule) print() {
 func (r *ExpandedRule) print() string {
 	extra := ""
 	if r.log != "" {
-		extra += " " + r.log
+		extra += " log=" + r.log + ";"
 	}
 	if r.stateless {
 		extra += " stateless"
@@ -1083,9 +1083,9 @@ func buildRuleTree(rules []*ExpandedRule) (ruleTree, int) {
 
 		if otherRule, found := leafMap[rule.prt]; found {
 			if rule.log != otherRule.log {
-				errMsg("Duplicate rules must have identical log attribute:\n",
-					" ", otherRule.print(), "\n",
-					" ", rule.print())
+				errMsg(
+					"Duplicate rules must have identical log attribute:\n %s\n %s",
+					otherRule.print(), rule.print())
 			}
 
 			// Found identical rule.
