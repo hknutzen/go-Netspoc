@@ -346,7 +346,7 @@ func convertProto(x xAny) *proto {
 		p.modifiers = convertModifiers(m)
 	}
 	if list, ok := m["range"]; ok {
-		a := list.(xSlice)
+		a := getSlice(list)
 		p.ports = [2]int{a[0].(int), a[1].(int)}
 	}
 	if _, ok := m["established"]; ok {
@@ -527,7 +527,7 @@ type Config struct {
 var config  = Config{
 	CheckDuplicateRules: "warn",
 	CheckRedundantRules: "warn",
-	CheckFullyRedundantRules: "warn",
+	CheckFullyRedundantRules: "0",
 }
 
 var startTime time.Time
