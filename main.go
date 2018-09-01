@@ -948,9 +948,14 @@ func showFullyRedundantRules() {
 	if action == "0" {
 		return
 	}
-	var errList []string
+	sNames := make([]string, 0, len(services))
+	for name := range services {
+		sNames = append(sNames, name)
+	}
+	sort.Strings(sNames)
 	keep := make(map[*Service]bool)
-	for _, service := range services {
+	for _, name := range sNames {
+		service := services[name]
 		if keep[service] {
 			continue
 		}
@@ -964,11 +969,7 @@ func showFullyRedundantRules() {
 		for service := range service.hasSameDupl {
 			keep[service] = true
 		}
-		errList = append(errList, service.name + " is fully redundant")
-	}
-	sort.Strings(errList)
-	for _, msg := range errList {
-		warnOrErrMsg(action, msg)
+		warnOrErrMsg(action, service.name + " is fully redundant")
 	}
 }
 
