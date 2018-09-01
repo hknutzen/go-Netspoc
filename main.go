@@ -420,6 +420,7 @@ func convertService(x xAny) *Service {
 	s := new(Service)
 	m["ref"] = s
 	s.name = m["name"].(string)
+	s.disabled = convertBool(m["disabled"])
 	if list, ok := m["overlaps"]; ok {
 		xOverlaps := list.(xSlice)
 		overlaps := make([]*Service, len(xOverlaps))
@@ -528,6 +529,8 @@ var config  = Config{
 	CheckDuplicateRules: "warn",
 	CheckRedundantRules: "warn",
 	CheckFullyRedundantRules: "0",
+	Verbose:             true,
+	TimeStamps:          true,
 }
 
 var startTime time.Time
