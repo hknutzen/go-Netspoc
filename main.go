@@ -525,12 +525,18 @@ type Config struct {
 	TimeStamps                   bool
 }
 
-var config  = Config{
-	CheckDuplicateRules: "warn",
-	CheckRedundantRules: "warn",
-	CheckFullyRedundantRules: "0",
-	Verbose:             true,
-	TimeStamps:          true,
+var config Config
+
+func convertConfig(x xAny) Config {
+	m := getMap(x)
+	c := Config{
+		Verbose: convertBool(m["verbose"]),
+		TimeStamps: convertBool(m["time_stamps"]),
+		CheckDuplicateRules: getString(m["check_duplicate_rules"]),
+		CheckRedundantRules: getString(m["check_redundant_rules"]),
+		CheckFullyRedundantRules: getString(m["check_fully_redundant_rules"]),
+	}
+	return c
 }
 
 var startTime time.Time
@@ -820,6 +826,9 @@ func collectDuplicateRules(rule, other *ExpandedRule) {
 		}
 	}
 	if rule.overlaps && other.overlaps {
+		return
+	}
+	if config.CheckDuplicateRules == "0" {
 		return
 	}
 
@@ -1250,14 +1259,15 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	var xData xSlice
-	err = sereal.Unmarshal(bytes, &xData)
+	var m xMap
+	err = sereal.Unmarshal(bytes, &m)
 	if err != nil {
 		panic(err)
 	}
-	protocols = convertProtoMap(xData[0])
-	services = convertServiceMap(xData[1])
-	prtIP = convertProto(xData[2])
-	pathRules := convertPathRules(xData[3])
+	config = convertConfig(m["config"])
+	prtIP = convertProto(m["prt_ip"])
+	protocols = convertProtoMap(m["protocols"])
+	services = convertServiceMap(m["services"])
+	pathRules := convertPathRules(m["path_rules"])
 	checkExpandedRules(pathRules)
 }
