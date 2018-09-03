@@ -152,7 +152,7 @@ func checkAbort() {
 	errorCounter++
 	if errorCounter >= 10 {
 		fmt.Fprintf(os.Stderr, "Aborted after %d errors\n", errorCounter)
-		os.Exit(1)
+		os.Exit(errorCounter)
 	}
 }
 
@@ -852,4 +852,5 @@ func main() {
 	startTime = time.Now()
 	importFromPerl()
 	checkExpandedRules()
+	os.Exit(errorCounter)
 }
