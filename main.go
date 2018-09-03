@@ -134,6 +134,7 @@ type Config struct {
 	CheckFullyRedundantRules     string
 	Verbose                      bool
 	TimeStamps                   bool
+	MaxErrors                    int
 }
 
 var config Config
@@ -150,7 +151,7 @@ func info(format string, args ...interface{}) {
 
 func checkAbort() {
 	errorCounter++
-	if errorCounter >= 10 {
+	if errorCounter >= config.MaxErrors {
 		fmt.Fprintf(os.Stderr, "Aborted after %d errors\n", errorCounter)
 		os.Exit(errorCounter)
 	}

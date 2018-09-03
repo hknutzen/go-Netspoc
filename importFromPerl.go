@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"github.com/Sereal/Sereal/Go/sereal"
 	"os"
+	"strconv"
 )
 
 type xAny interface{}
@@ -21,6 +22,21 @@ func getBool(x xAny) bool {
 		return b != 0
 	default:
 		return true
+	}
+}
+
+func getInt(x xAny) int {
+	switch i := x.(type) {
+	case string:
+		n, err := strconv.Atoi(i)
+		if err != nil {
+			panic(fmt.Errorf("Can't covert to int: %v", i))
+		}
+		return n
+	case int:
+		return i
+	default:
+		panic(fmt.Errorf("Expected int but got %v", i))
 	}
 }
 
@@ -398,6 +414,7 @@ func convConfig(x xAny) Config {
 	c := Config{
 		Verbose: getBool(m["verbose"]),
 		TimeStamps: getBool(m["time_stamps"]),
+		MaxErrors:  getInt(m["max_errors"]),
 		CheckDuplicateRules: getString(m["check_duplicate_rules"]),
 		CheckRedundantRules: getString(m["check_redundant_rules"]),
 		CheckFullyRedundantRules: getString(m["check_fully_redundant_rules"]),
