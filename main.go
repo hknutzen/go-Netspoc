@@ -2,9 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
-	//	"github.com/davecgh/go-spew/spew"
-	"github.com/Sereal/Sereal/Go/sereal"
 	"net"
 	"os"
 	"sort"
@@ -12,73 +9,13 @@ import (
 	"time"
 )
 
-type xAny interface{}
-type xMap = map[string]interface{}
-type xSlice = []interface{}
-
 type someObj interface {
 	name() string
 	network() *Network
 	up() someObj
-	setCommon(m xMap)
+	setCommon(m xMap) // for importFromPerl
 }
 type pathObj interface{}
-
-func convertBool(x xAny) bool {
-	switch b := x.(type) {
-	case nil:
-		return false
-	case string:
-		return b != "" && b != "0"
-	case int:
-		return b != 0
-	default:
-		return false
-	}
-}
-
-func getString(x xAny) string {
-	switch a := x.(type) {
-	case string:
-		return a
-	case []byte:
-		return string(a[:])
-	case int:
-		return fmt.Sprint(a)
-	default:
-		panic(fmt.Errorf("Expected string or byte slice but got %v", a))
-	}
-}
-func convertStrings(x xAny) []string {
-	a := getSlice(x)
-	result := make([]string, len(a))
-	for i, elt := range a {
-		result[i] = getString(elt)
-	}
-	return result
-}
-
-func getSlice(x xAny) xSlice {
-	switch a := x.(type) {
-	case xSlice:
-		return a
-	case *xSlice:
-		return *a
-	default:
-		panic(fmt.Errorf("Expected xSlice or *xSlice but got %v", a))
-	}
-}
-
-func getMap(x xAny) xMap {
-	switch m := x.(type) {
-	case xMap:
-		return m
-	case *xMap:
-		return *m
-	default:
-		panic(fmt.Errorf("Expected xMap or *xMap but got %v", m))
-	}
-}
 
 type IPObj struct {
 	Name string
@@ -88,18 +25,6 @@ type IPObj struct {
 
 func (x *IPObj) name() string { return x.Name }
 func (x *IPObj) up() someObj { return x.Up }
-func (x *IPObj) setCommon(m xMap) {
-	x.Name = m["name"].(string)
-	ip := m["ip"]
-	if ip == nil {
-		fmt.Println(x.Name)
-	} else {
-		x.IP = m["ip"].([]byte)
-	}
-	if up, ok := m["up"]; ok {
-		x.Up = convertSomeObj(up)
-	}
-}
 
 type Network struct {
 	IPObj
@@ -109,44 +34,11 @@ type Network struct {
 	zone       *Zone
 }
 
-func convertNetwork(x xAny) *Network {
-	m := getMap(x)
-	if n, ok := m["ref"]; ok {
-		return n.(*Network)
-	}
-	n := new(Network)
-	m["ref"] = n
-	n.setCommon(m)
-	if m["mask"] != nil {
-		n.Mask = m["mask"].([]byte)
-	}
-	if list, ok := m["subnets"]; ok {
-		xSubnets := list.(xSlice)
-		subnets := make([]*Subnet, len(xSubnets))
-		for i, xSubnet := range xSubnets {
-			subnets[i] = convertSubnet(xSubnet)
-		}
-		n.Subnets = subnets
-	}
-	if list, ok := m["interfaces"]; ok {
-		xInterfaces := list.(xSlice)
-		interfaces := make([]*Interface, len(xInterfaces))
-		for i, xInterface := range xInterfaces {
-			interfaces[i] = convertInterface(xInterface)
-		}
-		n.Interfaces = interfaces
-	}
-	return n
-}
 func (x *Network) network() *Network { return x }
 
 type NetObj struct {
 	IPObj
 	Network *Network
-}
-func (x *NetObj) setCommon(m xMap) {
-	x.IPObj.setCommon(m)
-	x.Network = convertNetwork(m["network"])
 }
 func (x *NetObj) network() *Network { return x.Network }
 
@@ -155,41 +47,10 @@ type Subnet struct {
 	Mask    net.IPMask
 }
 
-func convertSubnet(x xAny) *Subnet {
-	m := getMap(x)
-	if s, ok := m["ref"]; ok {
-		return s.(*Subnet)
-	}
-	s := new(Subnet)
-	m["ref"] = s
-	s.setCommon(m)
-	s.Mask = m["mask"].([]byte)
-	return s
-}
-
 type Router struct {
 	Name       string
 	Managed    string
 	Interfaces []*Interface
-}
-
-func convertRouter(x xAny) *Router {
-	m := getMap(x)
-	if r, ok := m["ref"]; ok {
-		return r.(*Router)
-	}
-	r := new(Router)
-	m["ref"] = r
-	r.Name = m["name"].(string)
-	if list, ok := m["interfaces"]; ok {
-		xInterfaces := list.(xSlice)
-		interfaces := make([]*Interface, len(xInterfaces))
-		for i, xInterface := range xInterfaces {
-			interfaces[i] = convertInterface(xInterface)
-		}
-		r.Interfaces = interfaces
-	}
-	return r
 }
 
 type Interface struct {
@@ -197,77 +58,9 @@ type Interface struct {
 	Router  *Router
 }
 
-func convertInterface(x xAny) *Interface {
-	m := getMap(x)
-	if i, ok := m["ref"]; ok {
-		return i.(*Interface)
-	}
-	i := new(Interface)
-	m["ref"] = i
-	i.setCommon(m)
-	i.Router = convertRouter(m["router"])
-	return i
-}
-
-func convertSomeObj(x xAny) someObj {
-	m := getMap(x)
-	if o, ok := m["ref"]; ok {
-		return o.(someObj)
-	}
-	if _, ok := m["router"]; ok {
-		return convertInterface(x)
-	}
-	if _, ok := m["network"]; ok {
-		return convertSubnet(x)
-	}
-	return convertNetwork(x)
-}
-
-func convertSomeObjects(x xAny) []someObj {
-	a := getSlice(x)
-	objects := make([]someObj, len(a))
-	for i, x := range a {
-		objects[i] = convertSomeObj(x)
-	}
-	return objects
-}
-
 type Zone struct {
 	Name     string
 	Networks []*Network
-}
-
-func convertZone(x xAny) *Zone {
-	m := getMap(x)
-	if r, ok := m["ref"]; ok {
-		return r.(*Zone)
-	}
-	z := new(Zone)
-	m["ref"] = z
-	z.Name = m["name"].(string)
-	if list, ok := m["networks"]; ok {
-		xNetworks := list.(xSlice)
-		networks := make([]*Network, len(xNetworks))
-		for i, xNetwork := range xNetworks {
-			networks[i] = convertNetwork(xNetwork)
-		}
-		z.Networks = networks
-	}
-	return z
-}
-
-func convertPathObj(x xAny) pathObj {
-	m := getMap(x)
-	if o, ok := m["ref"]; ok {
-		return o.(pathObj)
-	}
-	if _, ok := m["router"]; ok {
-		return convertInterface(x)
-	}
-	if _, ok := m["managed"]; ok {
-		return convertRouter(x)
-	}
-	return convertZone(x)
 }
 
 type modifiers struct {
@@ -278,33 +71,6 @@ type modifiers struct {
 	dstNet               bool
 	overlaps             bool
 	noCheckSupernetRules bool
-}
-
-func convertModifiers(x xAny) modifiers {
-	m := getMap(x)
-	var n modifiers
-	if _, ok := m["reversed"]; ok {
-		n.reversed = true
-	}
-	if _, ok := m["stateless"]; ok {
-		n.stateless = true
-	}
-	if _, ok := m["oneway"]; ok {
-		n.oneway = true
-	}
-	if _, ok := m["src_net"]; ok {
-		n.srcNet = true
-	}
-	if _, ok := m["dst_net"]; ok {
-		n.dstNet = true
-	}
-	if _, ok := m["overlaps"]; ok {
-		n.overlaps = true
-	}
-	if _, ok := m["no_check_supernet_rules"]; ok {
-		n.noCheckSupernetRules = true
-	}
-	return n
 }
 
 type proto struct {
@@ -324,81 +90,6 @@ type proto struct {
 	isUsed bool
 }
 
-func convertProto(x xAny) *proto {
-	if x == nil {
-		return nil
-	}
-	m := getMap(x)
-	if o, ok := m["ref"]; ok {
-		return o.(*proto)
-	}
-	p := new(proto)
-	m["ref"] = p
-	p.name = getString(m["name"])
-	p.proto = getString(m["proto"])
-	if t, ok := m["icmp_type"]; ok {
-		p.icmpType = t.(int)
-	}
-	if c, ok := m["icmp_code"]; ok {
-		p.icmpCode = c.(int)
-	}
-	if m, ok := m["modifiers"]; ok {
-		p.modifiers = convertModifiers(m)
-	}
-	if list, ok := m["range"]; ok {
-		a := getSlice(list)
-		p.ports = [2]int{a[0].(int), a[1].(int)}
-	}
-	if _, ok := m["established"]; ok {
-		p.established = true
-	}
-	if u, ok := m["up"]; ok {
-		p.up = convertProto(u)
-	}
-	p.src = convertProto(m["src_range"])
-	p.dst = convertProto(m["dst_range"])
-	p.main = convertProto(m["main"])
-	return p
-}
-func convertProtos(x xAny) []*proto {
-	a := getSlice(x)
-	list := make([]*proto, len(a))
-	for i, x := range a {
-		list[i] = convertProto(x)
-	}
-	return list
-}
-func convertProtoMap(x xAny) map[string]*proto {
-	m := getMap(x)
-	n := make(map[string]*proto)
-	for name, xProto := range m {
-		n[name] = convertProto(xProto)
-	}
-	return n
-}
-
-func convertProtoOrName (x xAny) protoOrName {
-	switch u := x.(type) {
-	case xSlice, *xSlice:
-		return convertStrings(x)
-	case xMap, *xMap:
-		return convertProto(x)
-	default:
-		panic(fmt.Errorf("Expected (*)xSlice or xMap but got %v", u))
-	}
-	return nil
-}
-		
-	
-func convertProtoOrNames (x xAny) []protoOrName {
-	a := getSlice(x)
-	list := make([]protoOrName, len(a))
-	for i, x := range a {
-		list[i] = convertProtoOrName(x)
-	}
-	return list
-}
-
 var prtIP = &proto{name: "ip", proto: "ip"}
 
 type Service struct {
@@ -410,47 +101,6 @@ type Service struct {
 	hasSameDupl      map[*Service]bool
 	Overlaps         []*Service
 	overlapsUsed     map[*Service]bool
-}
-
-func convertService(x xAny) *Service {
-	m := getMap(x)
-	if s, ok := m["ref"]; ok {
-		return s.(*Service)
-	}
-	s := new(Service)
-	m["ref"] = s
-	s.name = m["name"].(string)
-	s.disabled = convertBool(m["disabled"])
-	if list, ok := m["overlaps"]; ok {
-		xOverlaps := list.(xSlice)
-		overlaps := make([]*Service, len(xOverlaps))
-		for i, xOverlap := range xOverlaps {
-			overlaps[i] = convertService(xOverlap)
-		}
-		s.Overlaps = overlaps
-		s.overlapsUsed = make(map[*Service]bool)
-	}
-	return s
-}
-func convertServiceMap(x xAny) map[string]*Service {
-	m := getMap(x)
-	n := make(map[string]*Service)
-	for name, xService := range m {
-		n[name] = convertService(xService)
-	}
-	return n
-}
-
-func convertUnexpRule(x xAny) *UnexpRule {
-	m := getMap(x)
-	if r, ok := m["ref"]; ok {
-		return r.(*UnexpRule)
-	}
-	r := new(UnexpRule)
-	m["ref"] = r
-	r.Service = convertService(m["service"])
-	r.Prt = convertProtoOrNames(m["prt"])
-	return r
 }
 
 type UnexpRule struct {
@@ -473,48 +123,9 @@ type Rule struct {
 	Overlaps      bool
 }
 
-func convertRule(m xMap) *Rule {
-	r := new(Rule)
-	r.Deny = convertBool(m["deny"])
-	r.Src = convertSomeObjects(m["src"])
-	r.Dst = convertSomeObjects(m["dst"])
-	r.Prt = convertProtos(m["prt"])
-	r.SrcRange = convertProto(m["src_range"])
-	r.SrcPath = convertPathObj(m["src_path"])
-	r.DstPath = convertPathObj(m["dst_path"])
-	if log, ok := m["log"]; ok {
-		r.Log = getString(log)
-	}
-	r.Stateless = convertBool(m["stateless"])
-	r.StatelessICMP = convertBool(m["stateless_icmp"])
-	r.Overlaps = convertBool(m["overlaps"])
-	r.Rule = convertUnexpRule(m["rule"])
-	return r
-}
-
-func convertRules(a xSlice) []*Rule {
-	rules := make([]*Rule, len(a))
-	for i, x := range a {
-		rules[i] = convertRule(x.(xMap))
-	}
-	return rules
-}
-
 type PathRules struct {
 	Permit []*Rule
 	Deny   []*Rule
-}
-
-func convertPathRules(x xAny) *PathRules {
-	m := getMap(x)
-	rules := new(PathRules)
-	if v := m["permit"]; v != nil {
-		rules.Permit = convertRules(v.(xSlice))
-	}
-	if v := m["deny"]; v != nil {
-		rules.Deny = convertRules(v.(xSlice))
-	}
-	return rules
 }
 
 type Config struct {
@@ -527,20 +138,8 @@ type Config struct {
 
 var config Config
 
-func convertConfig(x xAny) Config {
-	m := getMap(x)
-	c := Config{
-		Verbose: convertBool(m["verbose"]),
-		TimeStamps: convertBool(m["time_stamps"]),
-		CheckDuplicateRules: getString(m["check_duplicate_rules"]),
-		CheckRedundantRules: getString(m["check_redundant_rules"]),
-		CheckFullyRedundantRules: getString(m["check_fully_redundant_rules"]),
-	}
-	return c
-}
-
 var startTime time.Time
-var errorCounter int = 0
+var errorCounter int
 
 func info(format string, args ...interface{}) {
 	if config.Verbose {
@@ -1188,7 +787,9 @@ func findRedundantRules(cmpHash, chgHash ruleTree) int {
 	return count
 }
 
-func checkExpandedRules(pRules *PathRules) {
+var pathRules *PathRules
+
+func checkExpandedRules() {
 	progress("Checking for redundant rules")
 	var count int
 	dcount := 0
@@ -1212,8 +813,8 @@ func checkExpandedRules(pRules *PathRules) {
 			key2rules[key] = append(key2rules[key], rule)
 		}
 	}
-	add(pRules.Deny)
-	add(pRules.Permit)
+	add(pathRules.Deny)
+	add(pathRules.Permit)
 
 	for key := 0; key < index; key++ {
 		rules := key2rules[key]
@@ -1249,26 +850,6 @@ func checkExpandedRules(pRules *PathRules) {
 
 func main() {
 	startTime = time.Now()
-	var bytes []byte
-	var err error
-	if len(os.Args) > 1 {
-		name := os.Args[1]
-		bytes, err = ioutil.ReadFile(name)
-	} else {
-		bytes, err = ioutil.ReadAll(os.Stdin)
-	}
-	if err != nil {
-		panic(err)
-	}
-	var m xMap
-	err = sereal.Unmarshal(bytes, &m)
-	if err != nil {
-		panic(err)
-	}
-	config = convertConfig(m["config"])
-	prtIP = convertProto(m["prt_ip"])
-	protocols = convertProtoMap(m["protocols"])
-	services = convertServiceMap(m["services"])
-	pathRules := convertPathRules(m["path_rules"])
-	checkExpandedRules(pathRules)
+	importFromPerl()
+	checkExpandedRules()
 }
