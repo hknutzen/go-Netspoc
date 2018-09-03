@@ -844,7 +844,7 @@ func checkExpandedRules() {
 	showRedundantRules()
 	warnUnusedOverlaps()
 	showFullyRedundantRules()
-	info("Expanded rule count: %d; duplicate %d; redundant %d",
+	info("Expanded rule count: %d; duplicate: %d; redundant: %d",
 		count, dcount, rcount)
 }
 
