@@ -1219,6 +1219,9 @@ func debugBintree (tree *netBintree, depth string) {
 }
 */
 
+type netOrProt interface {
+}
+
 // Value is lRuleTree.
 type lRuleTree map[netOrProt]*lRuleTree
 
@@ -1321,9 +1324,6 @@ func addBintree(tree *netBintree, node *netBintree) *netBintree {
 	}
 NOMERGE:
 	return result
-}
-
-type netOrProt interface {
 }
 
 // Build a binary tree for src/dst objects.
@@ -1783,7 +1783,7 @@ func findChains(aclInfo *aclInfo, routerData *routerData) {
 	subtree2bintree[codedLpermit] = codedBpermit
 
 	insertBintree := func(tree *lRuleTree) npBintree {
-		var elem1 interface{}
+		var elem1 netOrProt
 		for key := range *tree {
 			elem1 = key
 			break
