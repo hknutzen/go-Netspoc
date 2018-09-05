@@ -252,23 +252,21 @@ func orderRanges(protocol string, prt2obj name2Proto, up *proto) {
 				ranges[i].ports[1] > ranges[j].ports[1]
 	})
 
-	// Check current range [a1, a2] for sub-ranges, starting at position $i.
+	// Check current range a.ports[0,1] for sub-ranges, starting at position $i.
 	// Set attributes {up} and {hasNeighbor}.
-	// Return position of range which isn't sub-range or undef
+	// Return position of range which isn't sub-range or 0
 	// if end of array is reached.
-	var checkSubrange func(a *proto, a1, a2, i int) int
-	checkSubrange = func(a *proto, a1, a2, i int) int {
+	var checkSubrange func(a *proto, i int) int
+	checkSubrange = func(a *proto, i int) int {
 		for {
 			if i == len(ranges) {
 				return 0
 			}
 			b := ranges[i]
-			ports := b.ports
-			b1, b2 := ports[0], ports[1]
 
 			// Neighbors
 			// aaaabbbb
-			if a2+1 == b1 {
+			if a.ports[1]+1 == b.ports[0] {
 
 				// Mark protocol as candidate for joining of port ranges during
 				// optimization.
@@ -277,7 +275,7 @@ func orderRanges(protocol string, prt2obj name2Proto, up *proto) {
 
 				// Mark other ranges having identical start port.
 				for _, c := range ranges[i+1:] {
-					if c.ports[0] != b1 {
+					if c.ports[0] != b.ports[0] {
 						break
 					}
 					c.hasNeighbor = true
@@ -286,16 +284,16 @@ func orderRanges(protocol string, prt2obj name2Proto, up *proto) {
 
 			// Not related.
 			// aaaa    bbbbb
-			if a2 < b1 {
+			if a.ports[1] < b.ports[0] {
 				return i
 			}
 
 			// a includes b.
 			// aaaaaaa
 			//  bbbbb
-			if a2 >= b2 {
+			if a.ports[1] >= b.ports[1] {
 				b.up = a
-				i = checkSubrange(b, b1, b2, i+1)
+				i = checkSubrange(b, i+1)
 
 				// Stop at end of array.
 				if i == 0 {
@@ -310,7 +308,7 @@ func orderRanges(protocol string, prt2obj name2Proto, up *proto) {
 			// uncoverable statement
 			fatalErr(
 				"Unexpected overlapping ranges [%d-%d] [%d-%d]",
-				a1, a2, b1, b2)
+				a.ports[0], a.ports[1], b.ports[0], b.ports[1])
 		}
 	}
 
@@ -321,9 +319,7 @@ func orderRanges(protocol string, prt2obj name2Proto, up *proto) {
 	for {
 		a := ranges[index]
 		a.up = up
-		ports := a.ports
-		a1, a2 := ports[0], ports[1]
-		index = checkSubrange(a, a1, a2, index+1)
+		index = checkSubrange(a, index+1)
 		if index == 0 {
 			return
 		}
