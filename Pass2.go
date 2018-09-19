@@ -2331,7 +2331,7 @@ func prtList(names []string, prt2obj name2Proto) []*proto {
 
 type jRouterData struct {
 	Model         string     `json:"model"`
-	ACLs          []jACLInfo `json:"acls"`
+	ACLs          []*jACLInfo `json:"acls"`
 	FilterOnly    []string   `json:"filter_only"`
 	DoObjectgroup int        `json:"do_objectgroup"`
 	LogDeny       string     `json:"log_deny"`
