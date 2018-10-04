@@ -161,45 +161,35 @@ func setupSubst(objType string, search string, replace string) {
 }
 
 func substitute (objType string, name string) string {
-	if objType == "host" {
-		//ID host is extended by network name.
-		re := regexp.MustCompile(`^(id:.*)[.]([\w-]+)$`)
-		if re.MatchString(name) {
-			str := re.FindStringSubmatch(name)
-			host := str[1]
-			network := str[2]
-			r, o :=  subst["host"][host]
-			if o {
-				host = r
-				name = host + "." + network
-			}
-			r, o =  subst["network"][network]
-			if o {
-				network = r
-				name = host + "." + network
-
-			}
-			return name
+	if objType == "host" && strings.HasPrefix(name, "id:") {
+		// ID host is extended by network name: host:id:a.b@c.d.net_name
+		parts := strings.Split(name, ".")
+		network := parts[len(parts)-1]
+		host := strings.Join(parts[:len(parts)-1], ".")
+		if replace, ok :=  subst["host"][host]; ok {
+			host = replace
+			name = host + "." + network
 		}
-	} else if objType == "interface" {
+		if replace, ok :=  subst["network"][network]; ok {
+			network = replace
+			name = host + "." + network
+		}
+	} else if objType == "interface" && strings.Count(name, ".") > 0 {
 		// Reference to interface ouside the definition of router.
-		re := regexp.MustCompile(`^([\w@-]+)[.]([\w-]+)((?:[.].*)?)$`)
-		if re.MatchString(name) {
-			str := re.FindStringSubmatch(name)
-			router := str[1]
-			network := str[2]
-			ext := str[3]
-			repl, exists :=  subst["router"][router]
-			if exists {
-				router = repl
-				name = router + "." + network + ext
-			}
-			repl, exists = subst["network"][network]
-			if exists {
-				network = repl
-				name = router + "." + network + ext
-			}
-			return name
+		parts := strings.Split(name, ".")
+		router := parts[0]
+		network := parts[1]
+		ext := ""
+		if len(parts) > 2 {
+			ext = "." + parts[2]
+		}
+		if replace, ok :=  subst["router"][router]; ok {
+			router = replace
+			name = router + "." + network + ext
+		}
+		if replace, ok := subst["network"][network]; ok {
+			network = replace
+			name = router + "." + network + ext
 		}
 	} else if replace, ok :=  subst[objType][name]; ok {
 		return replace
