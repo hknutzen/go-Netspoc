@@ -128,12 +128,12 @@ var globalType = map[string]bool {
 	"crypto"          : true,
 }
 
-// NAT is applied with bindNat.
-// Owner is optionally referenced as subOwner.
+// NAT is applied with bind_nat.
+// Owner is optionally referenced as sub_owner.
 // Interface definition uses network name.
 var aliases = map[string][]string {
-	"nat"     : {"bindNat"},
-	"owner"   : {"subOwner"},
+	"nat"     : {"bind_nat"},
+	"owner"   : {"sub_owner"},
 	"network" : {"interface"},
 }
 
