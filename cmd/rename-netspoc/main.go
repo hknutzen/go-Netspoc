@@ -349,7 +349,7 @@ func setupPattern (pattern []string) {
 		oldType, oldName := getTypeAndName(old)
 		newType, newName := getTypeAndName(new)
 		if oldType != newType {
-			err.Fatal("Types must be identical in\n -%s\n -%s", old, new)
+			err.Fatal("Types must be identical in\n - %s\n - %s", old, new)
 		}
 		setupSubst(oldType, oldName, newName)
 	}
