@@ -137,48 +137,32 @@ var aliases = map[string][]string {
 	"network" : {"interface"},
 }
 
-var subst = map[string]map[string]string{}
+var subst = make(map[string]map[string]string)
 
 // Fill subst with mapping from search to replace for given type.
-func setupSubst(object string, search string, replace string) {
-	if !globalType[object] {
-		err.Fatal("Unknown type %s", object)
+func setupSubst(objType string, search string, replace string) {
+	if !globalType[objType] {
+		err.Fatal("Unknown type %s", objType)
+	}
+	addSubst := func(objType, search, replace string) {
+		subMap, ok := subst[objType]
+		if !ok {
+			subMap = make(map[string]string)
+			subst[objType] = subMap
+		}
+		subMap[search] = replace
 	}
 
-	subst[object] = map[string]string{ search : replace }
+	addSubst(objType, search, replace)
 
-	for _, other := range aliases[object] {
-		subst[other] = map[string]string{ search : replace, }
-	}
-
-   // Mark additinal types as valid for substitution.
-	// Meike: initialisiere leere map - wofür?
-	if object == "network" {
-		_, ok := subst["interface"]
-		if ok == false {
-			subst["interface"] = map[string]string{}
-		}
-		_, ok = subst["host"]
-		if ok == false {
-			subst["host"] = map[string]string{}
-		}
-	}
-	if object == "router" {
-		_, ok := subst["interface"]
-		if ok == false {
-			subst["interface"] = map[string]string{}
-		}
+	for _, other := range aliases[objType] {
+		addSubst(other, search, replace)
 	}
 }
 
-func substitute (object string, name string) string {
-	replace, ok :=  subst[object][name]
-	if !ok  {
-		return name
-	}
-
-	//ID host is extended by network name.
-	if object == "host" {
+func substitute (objType string, name string) string {
+	if objType == "host" {
+		//ID host is extended by network name.
 		re := regexp.MustCompile(`^(id:.*)[.]([\w-]+)$`)
 		if re.MatchString(name) {
 			str := re.FindStringSubmatch(name)
@@ -189,7 +173,7 @@ func substitute (object string, name string) string {
 				host = r
 				name = host + "." + network
 			}
-			r, o =  subst["network"][host]
+			r, o =  subst["network"][network]
 			if o {
 				network = r
 				name = host + "." + network
@@ -197,9 +181,8 @@ func substitute (object string, name string) string {
 			}
 			return name
 		}
-	}
-	// Reference to interface ouside the definition of router.
-	if object == "interface" {
+	} else if objType == "interface" {
+		// Reference to interface ouside the definition of router.
 		re := regexp.MustCompile(`^([\w@-]+)[.]([\w-]+)((?:[.].*)?)$`)
 		if re.MatchString(name) {
 			str := re.FindStringSubmatch(name)
@@ -218,8 +201,10 @@ func substitute (object string, name string) string {
 			}
 			return name
 		}
+	} else if replace, ok :=  subst[objType][name]; ok {
+		return replace
 	}
-	return replace
+	return name
 }
 
 func match(pattern *regexp.Regexp, string string, index int) ([]string, int) {
@@ -275,9 +260,9 @@ func process(input string) (int, string) {
 		if declaration.MatchString(input) {
 			str, index = match(declaration, input, index)
 			copy += str[1]+str[2]+str[3]
-			object := str[2]
+			objType := str[2]
 			name := str[4]
-			new := substitute(object, name)
+			new := substitute(objType, name)
 			copy += new
 			if new != name {
 				changed++
@@ -287,8 +272,8 @@ func process(input string) (int, string) {
 		if list.MatchString(input) {
 			str, index = match(list, input, index)
 			copy += str[1]+str[2]+str[3]
-			object := str[2]
-			if subst[object] != nil {
+			objType := str[2]
+			if subst[objType] != nil {
 				typelist = str[2]
 			}
 			continue
@@ -328,11 +313,11 @@ func processInput (input string) {
 	file.Close()
 }
 
-func getTypeAndName(object string) (string, string){
+func getTypeAndName(objName string) (string, string){
 	r := regexp.MustCompile(`^(\w+):(.*)$`)
-	res := r.FindStringSubmatch(object)
+	res := r.FindStringSubmatch(objName)
 	if len(res) != 3 {
-		err.Fatal("Missing type in '%s'", object)
+		err.Fatal("Missing type in '%s'", objName)
 	}
 	return res[1], res[2]
 }
