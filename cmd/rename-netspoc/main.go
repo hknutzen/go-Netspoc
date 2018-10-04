@@ -110,22 +110,22 @@ func processFileOrDir (path string, parser fn) {
 
 
 
-var types = map[string]int {
-	"router"          : 1,
-	"network"         : 1,
-	"host"            : 1,
-	"any"             : 1,
-	"group"           : 1,
-	"area"            : 1,
-	"service"         : 1,
-	"owner"           : 1,
-	"protocol"        : 1,
-	"protocolgroup"   : 1,
-	"pathrestriction" : 1,
-	"nat"             : 1,
-	"isakmp"          : 1,
-	"ipsec"           : 1,
-	"crypto"          : 1,
+var globalType = map[string]bool {
+	"router"          : true,
+	"network"         : true,
+	"host"            : true,
+	"any"             : true,
+	"group"           : true,
+	"area"            : true,
+	"service"         : true,
+	"owner"           : true,
+	"protocol"        : true,
+	"protocolgroup"   : true,
+	"pathrestriction" : true,
+	"nat"             : true,
+	"isakmp"          : true,
+	"ipsec"           : true,
+	"crypto"          : true,
 }
 
 // NAT is applied with bindNat.
@@ -141,7 +141,7 @@ var subst = map[string]map[string]string{}
 
 // Fill subst with mapping from search to replace for given type.
 func setupSubst(object string, search string, replace string) {
-	if types[object] != 1 {
+	if !globalType[object] {
 		err.Fatal("Unknown type %s", object)
 	}
 
