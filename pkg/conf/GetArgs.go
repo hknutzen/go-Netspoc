@@ -332,6 +332,6 @@ func GetArgs() (string, string) {
 func ConfigFromArgsAndFile(args []string, path string) {
 	fs := flag.NewFlagSet("", flag.ExitOnError)
 	Conf = defaultOptions(fs)
-	flag.CommandLine.Parse(args)
+	fs.Parse(args)
 	addConfigFromFile(path, fs)
 }

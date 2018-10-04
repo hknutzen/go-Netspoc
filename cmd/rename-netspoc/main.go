@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 	"io/ioutil"
-	flag "github.com/spf13/pflag"
+	"github.com/spf13/pflag"
 	"fmt"
 	"path/filepath"
 	"regexp"
@@ -370,21 +370,21 @@ func readPattern(path string) {
 func main() {
 
 	// Setup custom usage function.
-	flag.Usage = func() {
+	pflag.Usage = func() {
 		fmt.Fprintf(os.Stderr,
 			"Usage: %s [options] FILE|DIR SUBSTITUTION ...\n", os.Args[0])
-		flag.PrintDefaults()
+		pflag.PrintDefaults()
 	}
 
 	// Command line flags
-	quiet := flag.BoolP("", "q", false, "Don't show number of changes")
-	fromFile := flag.StringP("file", "f", "", "Read pairs from file")
-	flag.Parse()
+	quiet := pflag.BoolP("quiet", "q", false, "Don't show number of changes")
+	fromFile := pflag.StringP("file", "f", "", "Read pairs from file")
+	pflag.Parse()
 
 	// Argument processing
-	args := flag.Args()
+	args := pflag.Args()
 	if len(args) == 0 {
-		flag.Usage()
+		pflag.Usage()
 		os.Exit(1)
 	}
 	inPath := args[0]
@@ -397,11 +397,8 @@ func main() {
 		setupPattern(args[1:])
 	}
 	// Initialize Conf, especially attribute IgnoreFiles.
-	var dummy []string
-	if !*quiet {
-		dummy = append(dummy, "-v")
-	}
-	conf.ConfigFromArgsAndFile(dummy, inPath)
+	dummyArgs := []string{ fmt.Sprintf("--verbose=%v", !*quiet) }
+	conf.ConfigFromArgsAndFile(dummyArgs, inPath)
 
 	// Do substitution.
 	processFileOrDir(inPath, processInput)
