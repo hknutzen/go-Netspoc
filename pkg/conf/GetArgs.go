@@ -116,7 +116,7 @@ var invertedFlags = invertedFlag{
 	"noauto_default_route": {orig: "auto_default_route"},
 }
 
-func parseOptions() *Config {
+func defaultOptions(fs *flag.FlagSet) *Config {
 	cfg := &Config{
 
 		// Check for unused groups and protocolgroups.
@@ -196,17 +196,16 @@ func parseOptions() *Config {
 		// pass 2 reads to be processed device names from STDIN.
 		Pipe: false,
 	}
-	err := gpflag.ParseToDef(cfg, sflags.FlagDivider("_"))
+	err := gpflag.ParseTo(cfg, fs, sflags.FlagDivider("_"))
 	if err != nil {
 		panic(err)
 	}
 	for name, spec := range invertedFlags {
-		origFlag := flag.Lookup(spec.orig)
+		origFlag := fs.Lookup(spec.orig)
 		inverted := invFlag{origFlag}
-		flag := flag.CommandLine.VarPF(inverted, name, spec.short, "")
+		flag := fs.VarPF(inverted, name, spec.short, "")
 		flag.NoOptDefVal = "true"
 	}
-	flag.Parse()
 	return cfg
 }
 
@@ -263,15 +262,14 @@ func readConfig(filename string) map[string]string {
 // parseFile parses the specified configuration file and populates unset flags
 // in flag.CommandLine based on the contents of the file.
 // Hidden flags are not set from file.
-func parseFile(filename string) {
-	flags := flag.CommandLine
+func parseFile(filename string, fs *flag.FlagSet) {
 	isSet := make(map[*flag.Flag]bool)
 	config := readConfig(filename)
 
-	flags.Visit(func(f *flag.Flag) {
+	fs.Visit(func(f *flag.Flag) {
 		isSet[f] = true
 	})
-	flags.VisitAll(func(f *flag.Flag) {
+	fs.VisitAll(func(f *flag.Flag) {
 		// Ignore inverted flags.
 		if _, found := invertedFlags[f.Name]; found {
 			return
@@ -295,12 +293,12 @@ func parseFile(filename string) {
 	}
 }
 
-func addConfigFromFile(inDir string) {
+func addConfigFromFile(inDir string, fs *flag.FlagSet) {
 	path := inDir + "/config"
 	if !file.IsRegular(path) {
 		return
 	}
-	parseFile(path)
+	parseFile(path, fs)
 }
 
 func setStartTime () {
@@ -311,7 +309,7 @@ func setStartTime () {
 	}
 }
 
-var Conf Config
+var Conf *Config
 var StartTime time.Time
 
 func GetArgs() (string, string) {
@@ -323,9 +321,17 @@ func GetArgs() (string, string) {
 		flag.PrintDefaults()
 	}
 
-	Conf = *parseOptions()
+	Conf = defaultOptions(flag.CommandLine)
+	flag.CommandLine.Parse(os.Args[1:])
 	inPath, outDir := parseArgs()
-	addConfigFromFile(inPath)
+	addConfigFromFile(inPath, flag.CommandLine)
 	setStartTime()
 	return inPath, outDir
+}
+
+func ConfigFromArgsAndFile(args []string, path string) {
+	fs := flag.NewFlagSet("", flag.ExitOnError)
+	Conf = defaultOptions(fs)
+	flag.CommandLine.Parse(args)
+	addConfigFromFile(path, fs)
 }

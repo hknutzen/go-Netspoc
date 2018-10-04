@@ -35,39 +35,11 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
+	"github.com/hknutzen/go-Netspoc/pkg/err"
+	"github.com/hknutzen/go-Netspoc/pkg/diag"
+	"github.com/hknutzen/go-Netspoc/pkg/conf"
+	"github.com/hknutzen/go-Netspoc/pkg/file"
 )
-
-var config Config
-var startTime time.Time
-
-func fatalErr(format string, args ...interface{}) {
-	string := "Error: " + fmt.Sprintf(format, args...)
-	fmt.Fprintln(os.Stderr, string)
-	os.Exit(1)
-}
-
-func info(format string, args ...interface{}) {
-	if config.Verbose {
-		string := fmt.Sprintf(format, args...)
-		fmt.Fprintln(os.Stderr, string)
-	}
-}
-
-func diagMsg(msg string) {
-	if os.Getenv("SHOW_DIAG") != "" {
-		fmt.Fprintln(os.Stderr, "DIAG: "+msg)
-	}
-}
-
-func progress(msg string) {
-	if config.Verbose {
-		if config.TimeStamps {
-			msg = fmt.Sprintf("%.0fs %s", time.Since(startTime).Seconds(), msg)
-		}
-		info(msg)
-	}
-}
 
 type ipNet struct {
 	*net.IPNet
@@ -306,7 +278,7 @@ func orderRanges(protocol string, prt2obj name2Proto, up *proto) {
 			// aaaaa
 			//   bbbbbb
 			// uncoverable statement
-			fatalErr(
+			err.Fatal(
 				"Unexpected overlapping ranges [%d-%d] [%d-%d]",
 				a.ports[0], a.ports[1], b.ports[0], b.ports[1])
 		}
@@ -1209,7 +1181,7 @@ func debugBintree (tree *netBintree, depth string) {
 	if tree.subtree != nil {
 		subtree = "subtree";
 	}
-	info("%s %s/%d %s", depth, ip, len, subtree)
+	diag.Info("%s %s/%d %s", depth, ip, len, subtree)
 	if lo := tree.lo; lo != nil {
 		debugBintree(lo, depth + "l")
 	}
@@ -2362,13 +2334,13 @@ type jRule struct {
 func prepareACLs(path string) *routerData {
 	var jdata jRouterData
 	routerData := new(routerData)
-	data, err := ioutil.ReadFile(path)
-	if err != nil {
-		panic(err)
+	data, e := ioutil.ReadFile(path)
+	if e != nil {
+		panic(e)
 	}
-	err = jsoniter.Unmarshal(data, &jdata)
-	if err != nil {
-		panic(err)
+	e = jsoniter.Unmarshal(data, &jdata)
+	if e != nil {
+		panic(e)
 	}
 	var ipv6 bool
 	if index := strings.Index(path, "/ipv6/"); index != -1 {
@@ -2533,7 +2505,7 @@ func printObjectGroups(fd *os.File, aclInfo *aclInfo, model string) {
 			// Reject network with mask = 0 in group.
 			// This occurs if optimization didn't work correctly.
 			if size, _ := element.Mask.Size(); size == 0 {
-				fatalErr("Unexpected network with mask 0 in object-group")
+				err.Fatal("Unexpected network with mask 0 in object-group")
 			}
 			adr := ciscoACLAddr(element, model)
 			if model == "NX-OS" {
@@ -2705,9 +2677,9 @@ func printACL(fd *os.File, aclInfo *aclInfo, routerData *routerData) {
 const aclMarker = "#insert "
 
 func printCombined(config []string, routerData *routerData, outPath string) {
-	fd, err := os.Create(outPath)
-	if err != nil {
-		fatalErr("Can't open %s for writing: %v", outPath, err)
+	fd, e := os.Create(outPath)
+	if e != nil {
+		err.Fatal("Can't open %s for writing: %v", outPath, e)
 	}
 	aclLookup := make(map[string]*aclInfo)
 	for _, acl := range routerData.acls {
@@ -2721,7 +2693,7 @@ func printCombined(config []string, routerData *routerData, outPath string) {
 			name := line[len(aclMarker):]
 			aclInfo, ok := aclLookup[name]
 			if !ok {
-				fatalErr("Unexpected ACL %s", name)
+				err.Fatal("Unexpected ACL %s", name)
 			}
 			printACL(fd, aclInfo, routerData)
 		} else {
@@ -2730,37 +2702,27 @@ func printCombined(config []string, routerData *routerData, outPath string) {
 		}
 	}
 
-	if err := fd.Close(); err != nil {
-		fatalErr("Can't close %s: %v", outPath, err)
+	if e := fd.Close(); e != nil {
+		err.Fatal("Can't close %s: %v", outPath, e)
 	}
-}
-
-func isDir(path string) bool {
-	stat, err := os.Stat(path)
-	return err == nil && stat.Mode().IsDir()
-}
-
-func isRegular(path string) bool {
-	stat, err := os.Stat(path)
-	return err == nil && stat.Mode().IsRegular()
 }
 
 // Try to use pass2 file from previous run.
 // If identical files with extension .config and .rules
 // exist in directory .prev/, then use copy.
 func tryPrev(devicePath, dir, prev string) bool {
-	if !isDir(prev) {
+	if !file.IsDir(prev) {
 		return false
 	}
 	prevFile := prev + "/" + devicePath
-	if !isRegular(prevFile) {
+	if !file.IsRegular(prevFile) {
 		return false
 	}
 	codeFile := dir + "/" + devicePath
 	for _, ext := range [...]string{"config", "rules"} {
 		pass1name := codeFile + "." + ext
 		pass1prev := prevFile + "." + ext
-		if !isRegular(pass1prev) {
+		if !file.IsRegular(pass1prev) {
 			return false
 		}
 		cmd := exec.Command("cmp", "-s", pass1name, pass1prev)
@@ -2774,14 +2736,14 @@ func tryPrev(devicePath, dir, prev string) bool {
 	}
 
 	// File was found and copied successfully.
-	diagMsg("Reused .prev/" + devicePath)
+	diag.Msg("Reused .prev/" + devicePath)
 	return true
 }
 
 func readFileLines(filename string) []string {
-	fd, err := os.Open(filename)
-	if err != nil {
-		fatalErr("Can't open %s for reading: %v", filename, err)
+	fd, e := os.Open(filename)
+	if e != nil {
+		err.Fatal("Can't open %s for reading: %v", filename, e)
 	}
 	result := make([]string, 0)
 	scanner := bufio.NewScanner(fd)
@@ -2789,8 +2751,8 @@ func readFileLines(filename string) []string {
 		line := scanner.Text()
 		result = append(result, line)
 	}
-	if err := scanner.Err(); err != nil {
-		fatalErr("While reading device names: %v", err)
+	if e := scanner.Err(); e != nil {
+		err.Fatal("While reading device names: %v", e)
 	}
 	return result
 }
@@ -2823,7 +2785,7 @@ func pass2File(devicePath, dir, prev string, c chan pass2Result) {
 func applyConcurrent(deviceNamesFh *os.File, dir, prev string) {
 
 	var started, generated, reused, errors int
-	concurrent := config.ConcurrencyPass2
+	concurrent := conf.Conf.ConcurrencyPass2
 	c := make(chan pass2Result, concurrent)
 	workersLeft := concurrent
 
@@ -2866,18 +2828,18 @@ func applyConcurrent(deviceNamesFh *os.File, dir, prev string) {
 		waitAndCheck()
 	}
 
-	if err := scanner.Err(); err != nil {
-		fatalErr("While reading device names: %v", err)
+	if e := scanner.Err(); e != nil {
+		err.Fatal("While reading device names: %v", e)
 	}
 
 	if errors > 0 {
-		fatalErr("Failed")
+		err.Fatal("Failed")
 	}
 	if generated > 0 {
-		info("Generated files for %d devices", generated)
+		diag.Info("Generated files for %d devices", generated)
 	}
 	if reused > 0 {
-		info("Reused %d files from previous run", reused)
+		diag.Info("Reused %d files from previous run", reused)
 	}
 }
 
@@ -2886,14 +2848,14 @@ func pass2(dir string) {
 
 	// Read to be processed files either from STDIN or from file.
 	var fromPass1 *os.File
-	if config.Pipe {
+	if conf.Conf.Pipe {
 		fromPass1 = os.Stdin
 	} else {
 		devlist := dir + "/.devlist"
-		var err error
-		fromPass1, err = os.Open(devlist)
-		if err != nil {
-			fatalErr("Can't open %s for reading: %v", devlist, err)
+		var e error
+		fromPass1, e = os.Open(devlist)
+		if e != nil {
+			err.Fatal("Can't open %s for reading: %v", devlist, e)
 		}
 	}
 
@@ -2901,22 +2863,16 @@ func pass2(dir string) {
 
 	// Remove directory '.prev' created by pass1
 	// or remove symlink '.prev' created by newpolicy.pl.
-	err := os.RemoveAll(prev)
-	if err != nil {
-		fatalErr("Can't remove %s: %v", prev, err)
+	e := os.RemoveAll(prev)
+	if e != nil {
+		err.Fatal("Can't remove %s: %v", prev, e)
 	}
 }
 
 func main() {
-	cfg, _, outDir := getArgs()
-	config = *cfg
+	_, outDir := conf.GetArgs()
 	if outDir != "" {
-		if config.StartTime != 0 {
-			startTime = time.Unix(config.StartTime, 0)
-		} else {
-			startTime = time.Now()
-		}
 		pass2(outDir)
-		progress("Finished")
+		diag.Progress("Finished")
 	}
 }
