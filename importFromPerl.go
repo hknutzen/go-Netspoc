@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"github.com/Sereal/Sereal/Go/sereal"
+	"net"
 	"os"
 	"strconv"
 )
@@ -85,11 +86,18 @@ func getMap(x xAny) xMap {
 
 func (x *IPObj) setCommon(m xMap) {
 	x.Name = m["name"].(string)
-	ip := m["ip"]
-	if ip == nil {
-		fmt.Println(x.Name)
-	} else {
-		x.IP = m["ip"].([]byte)
+	s := getString(m["ip"])
+	switch s {
+	case "unnumbered":
+		x.unnumbered = true
+	case "negotiated":
+		x.negotiated = true
+	case "tunnel":
+		x.tunnel = true
+	case "bridged":
+		x.bridged = true
+	default:
+		x.IP = net.IP(s)
 	}
 	if up, ok := m["up"]; ok {
 		x.Up = convSomeObj(up)
@@ -142,6 +150,35 @@ func convSubnet(x xAny) *Subnet {
 	return s
 }
 
+func convNoNatSet(x xAny) noNatSet {
+	m := getMap(x)
+	if n, ok := m[":ref"]; ok {
+		return n.(noNatSet)
+	}
+	n := make(map[string]bool)
+	m[":ref"] = &n
+	for tag := range m {
+		n[tag] = true
+	}
+	return &n
+}
+
+func convAclInfo(x xAny) *aclInfo {
+	m := getMap(x)
+	i := new(aclInfo)
+	i.name = getString(m["name"])
+	i.noNatSet = convNoNatSet(m["no_nat_set"])
+	i.dstNoNatSet = convNoNatSet(m["dstNoNatSet"])
+	i.rules = convRules(m["rules"])
+	i.intfRules = convRules(m["intf_rules"])
+	i.protectSelf = getBool(m["protect_self"])
+	i.addPermit = getBool(m["add_permit"])
+	i.addDeny = getBool(m["add_deny"])
+	i.filterAnySrc = getBool(m["filter_any_src"])
+	i.isCryptoAcl = getBool(m["is_crypto_acl"])
+	return i
+}
+
 func convRouter(x xAny) *Router {
 	m := getMap(x)
 	if r, ok := m["ref"]; ok {
@@ -149,14 +186,18 @@ func convRouter(x xAny) *Router {
 	}
 	r := new(Router)
 	m["ref"] = r
-	r.Name = m["name"].(string)
-	if list, ok := m["interfaces"]; ok {
-		xInterfaces := list.(xSlice)
-		interfaces := make([]*Interface, len(xInterfaces))
-		for i, xInterface := range xInterfaces {
-			interfaces[i] = convInterface(xInterface)
+	r.Name = getString(m["name"])
+	r.DeviceName = getString(m["device_name"])
+	r.Managed = getString(m["managed"])
+	r.AdminIP = getString(m["admin_ip"])
+	r.Interfaces = convInterfaces(m["interfaces"])
+	if x, ok := m["acl_list"]; ok {
+		a := getSlice(x)
+		aclList := make([]*aclInfo, len(a))
+		for i, x := range a {
+			aclList[i] = convAclInfo(x)
 		}
-		r.Interfaces = interfaces
+		r.aclList = aclList
 	}
 	return r
 }
@@ -171,6 +212,14 @@ func convInterface(x xAny) *Interface {
 	i.setCommon(m)
 	i.Router = convRouter(m["router"])
 	return i
+}
+func convInterfaces(x xAny) []*Interface {
+	a := getSlice(x)
+	interfaces := make([]*Interface, len(a))
+	for i, x := range a {
+		interfaces[i] = convInterface(x)
+	}
+	return interfaces
 }
 
 func convSomeObj(x xAny) someObj {
@@ -389,7 +438,8 @@ func convRule(m xMap) *Rule {
 	return r
 }
 
-func convRules(a xSlice) []*Rule {
+func convRules(x xAny) []*Rule {
+	a := getSlice(x)
 	rules := make([]*Rule, len(a))
 	for i, x := range a {
 		rules[i] = convRule(x.(xMap))
@@ -401,10 +451,10 @@ func convPathRules(x xAny) *PathRules {
 	m := getMap(x)
 	rules := new(PathRules)
 	if v := m["permit"]; v != nil {
-		rules.Permit = convRules(v.(xSlice))
+		rules.Permit = convRules(v)
 	}
 	if v := m["deny"]; v != nil {
-		rules.Deny = convRules(v.(xSlice))
+		rules.Deny = convRules(v)
 	}
 	return rules
 }
@@ -414,6 +464,7 @@ func convConfig(x xAny) Config {
 	c := Config{
 		Verbose: getBool(m["verbose"]),
 		TimeStamps: getBool(m["time_stamps"]),
+		Pipe: getBool(m["pipe"]),
 		MaxErrors:  getInt(m["max_errors"]),
 		CheckDuplicateRules: getString(m["check_duplicate_rules"]),
 		CheckRedundantRules: getString(m["check_redundant_rules"]),
