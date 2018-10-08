@@ -23,7 +23,7 @@ func processFile (path string, parser fn){
 
 	content, e := ioutil.ReadFile(path)
 	if e != nil {
-		err.Fatal("Can't read %s: %s", path, e.Error())
+		err.Fatal("Can't read %s: %s", path, e)
 	}
 	input := string(content)
 	currentFile = path
@@ -107,7 +107,6 @@ func processFileOrDir (path string, parser fn) {
 		}
 	}
 }
-
 
 
 var globalType = map[string]bool {
@@ -197,89 +196,80 @@ func substitute (objType string, name string) string {
 	return name
 }
 
-func match(pattern *regexp.Regexp, string string, index int) ([]string, int) {
-	str := pattern.FindStringSubmatch(string)
-	loc := pattern.FindStringIndex(string)
-	return str, loc[1]
-}
-
 func process(input string) (int, string) {
 	changed := 0
+	typelist := ""
 	copy := ""
 
 	// Iteratively parse inputstring
-	comment := regexp.MustCompile(`(^\s*[#].*\n)`)
+	comment := regexp.MustCompile(`^\s*[#].*\n`)
 	nothing := regexp.MustCompile(`^.*\n`)
-	declaration := regexp.MustCompile(`^(.*?)(\w+)(:)([-\w.\@:]+)`)
-	list := regexp. MustCompile(`^(.*?)([-\w]+)(\s* = [ \t]*)`)
-	listelem := regexp.MustCompile(`^(\s*)([-\w.\@:ßüaö]+)`)
-	comma := regexp.MustCompile(`^(\s*,\s*)`)
+	declaration := regexp.MustCompile(`^(.*?)(\w+)(:)([-\w\p{Ll}\p{Lu}.\@:]+)`)
+	list := regexp.MustCompile(`^(.*?)([-\w]+)(\s*=[ \t]*)`)
+	listelem := regexp.MustCompile(`^(\s*)([-\w\p{Ll}\p{Lu}.\@:]+)`)
+	comma := regexp.MustCompile(`^\s*,\s*`)
 
-	typelist := ""
-	index := 0
-	var str []string
-
-	for index < len(input) {
-		input = input[index:]
-
-	if comment.MatchString(input) {
-		str, index = match(comment, input, index)
-			copy += str[0]
-			continue
+	// Match pattern in input and skip matched pattern.
+	match := func(pattern *regexp.Regexp) ([]string) {
+		matches := pattern.FindStringSubmatch(input)
+		if matches == nil {
+			return nil
 		}
-		if typelist != "" {
-			if listelem.MatchString(input) {
-				str, index = match(listelem, input, index)
-				name := str[2]
+		skip := len(matches[0])
+		input = input[skip:]
+		return matches
+	}
+
+	for {
+		if m := match(comment); m != nil {
+			// Ignore comment.
+			copy += m[0]
+		} else if typelist != "" {
+			// Handle list of names after "name = "
+			// Read list element.
+			if m := match(listelem); m != nil {
+				copy += m[1]
+				name := m[2]
 				new := substitute(typelist, name)
 				copy += new
 				if new != name {
-					fmt.Printf ("substitute %s with %s\n", name, new)
 					changed++
 				}
-				continue
+			} else if m := match(comma); m != nil {
+				// Read comma.
+				copy += m[0]
+			} else {
+				// Everything else terminates list.
+				typelist = ""
 			}
-			if comma.MatchString(input) {
-				str, index = match(comma, input, index)
-				copy += str[0]
-				continue
-			}
-			typelist = ""
-		}
-
-		if declaration.MatchString(input) {
-			str, index = match(declaration, input, index)
-			copy += str[1]+str[2]+str[3]
-			objType := str[2]
-			name := str[4]
+		} else if m := match(declaration); m != nil {
+			// Find next "type:name".
+			copy += m[1]+m[2]+m[3]
+			objType := m[2]
+			name := m[4]
 			new := substitute(objType, name)
 			copy += new
 			if new != name {
 				changed++
 			}
-			continue
-		}
-		if list.MatchString(input) {
-			str, index = match(list, input, index)
-			copy += str[1]+str[2]+str[3]
-			objType := str[2]
+		} else if m := match(list); m != nil {
+			// Find "type = name".
+			copy += m[1]+m[2]+m[3]
+			objType := m[2]
 			if subst[objType] != nil {
-				typelist = str[2]
+				typelist = m[2]
 			}
-			continue
+		} else if m := match(nothing); m != nil {
+			// Ignore rest of line if nothing matches.
+			copy += m[0]
+		} else {
+			// Terminate, if everything has been processed.
+			break
 		}
-		if nothing.MatchString(input) {
-			str, index = match(nothing, input, index)
-			copy += str[0]
-			continue
-		}
-		break
 	}
-
 	return changed, copy
 }
 
-//sub processInput {
 func processInput (input string) {
 	count, copy := process(input)
 	if count == 0 {
@@ -290,15 +280,15 @@ func processInput (input string) {
 	diag.Info("%d changes in %s", count, path)
 	e := os.Remove(path)
 	if e != nil {
-		err.Fatal("Can't remove %s: %s", path, e.Error())
+		err.Fatal("Can't remove %s: %s", path, e)
 	}
 	file, e := os.Create(path)
 	if e != nil {
-		err.Fatal("Can't create %s: %s", path, e.Error())
+		err.Fatal("Can't create %s: %s", path, e)
 	}
 	_, e = file.WriteString(copy)
 	if e != nil {
-		err.Fatal("Can't write to %s: %s", path, e.Error())
+		err.Fatal("Can't write to %s: %s", path, e)
 	}
 	file.Close()
 }
@@ -333,7 +323,7 @@ func setupPattern (pattern []string) {
 func readPattern(path string) {
 	bytes, e := ioutil.ReadFile(path)
 	if e != nil {
-		err.Fatal("Failed to read file %s: %s", path, e.Error())
+		err.Fatal("Can't %s", e)
 	}
 	pattern := strings.Fields(string(bytes))
 	if len(pattern) == 0 {
