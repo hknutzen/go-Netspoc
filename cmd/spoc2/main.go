@@ -39,6 +39,7 @@ import (
 	"github.com/hknutzen/go-Netspoc/pkg/diag"
 	"github.com/hknutzen/go-Netspoc/pkg/conf"
 	"github.com/hknutzen/go-Netspoc/pkg/file"
+	"github.com/hknutzen/go-Netspoc/pkg/jcode"
 )
 
 type ipNet struct {
@@ -2226,7 +2227,7 @@ func printIptablesACL(fd *os.File, aclInfo *aclInfo, routerData *routerData) {
 	}
 }
 
-func convertRuleObjects(rules []*jRule, ipNet2obj name2ipNet, prt2obj name2Proto) (ciscoRules, bool) {
+func convertRuleObjects(rules []*jcode.Rule, ipNet2obj name2ipNet, prt2obj name2Proto) (ciscoRules, bool) {
 	var expanded ciscoRules
 	var hasLog bool
 	for _, rule := range rules {
@@ -2301,38 +2302,8 @@ func prtList(names []string, prt2obj name2Proto) []*proto {
 	return result
 }
 
-type jRouterData struct {
-	Model         string     `json:"model"`
-	ACLs          []*jACLInfo `json:"acls"`
-	FilterOnly    []string   `json:"filter_only"`
-	DoObjectgroup int        `json:"do_objectgroup"`
-	LogDeny       string     `json:"log_deny"`
-}
-type jACLInfo struct {
-	Name         string   `json:"name"`
-	IsStdACL     int      `json:"is_std_acl"`
-	IntfRules    []*jRule `json:"intf_rules"`
-	Rules        []*jRule `json:"rules"`
-	OptNetworks  []string `json:"opt_networks"`
-	NoOptAddrs   []string `json:"no_opt_addrs"`
-	NeedProtect  []string `json:"need_protect"`
-	FilterAnySrc int      `json:"filter_any_src"`
-	IsCryptoACL  int      `json:"is_crypto_acl"`
-	AddPermit    int      `json:"add_permit"`
-	AddDeny      int      `json:"add_deny"`
-}
-type jRule struct {
-	Deny         int      `json:"deny"`
-	Src          []string `json:"src"`
-	Dst          []string `json:"dst"`
-	Prt          []string `json:"prt"`
-	SrcRange     string   `json:"src_range"`
-	Log          string   `json:"log"`
-	OptSecondary int      `json:"opt_secondary"`
-}
-
 func prepareACLs(path string) *routerData {
-	var jdata jRouterData
+	var jdata jcode.RouterData
 	routerData := new(routerData)
 	data, e := ioutil.ReadFile(path)
 	if e != nil {
