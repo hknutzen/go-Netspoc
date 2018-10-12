@@ -68,6 +68,8 @@ func getStrings(x xAny) []string {
 
 func getSlice(x xAny) xSlice {
 	switch a := x.(type) {
+	case nil:
+		return make(xSlice, 0)
 	case xSlice:
 		return a
 	case *xSlice:
@@ -79,6 +81,8 @@ func getSlice(x xAny) xSlice {
 
 func getMap(x xAny) xMap {
 	switch m := x.(type) {
+	case nil:
+		return make(xMap)
 	case xMap:
 		return m
 	case *xMap:
@@ -160,7 +164,7 @@ func convNoNatSet(x xAny) noNatSet {
 		return n.(noNatSet)
 	}
 	n := make(map[string]bool)
-	m[":ref"] = &n
+	m[":ref"] = noNatSet(&n)
 	for tag := range m {
 		n[tag] = true
 	}
@@ -204,6 +208,14 @@ func convRouter(x xAny) *Router {
 		r.aclList = aclList
 	}
 	return r
+}
+func convRouters(x xAny) []*Router {
+	a := getSlice(x)
+	routers := make([]*Router, len(a))
+	for i, x := range a {
+		routers[i] = convRouter(x)
+	}
+	return routers
 }
 
 func convInterface(x xAny) *Interface {
@@ -389,7 +401,7 @@ func convService(x xAny) *Service {
 	}
 	s := new(Service)
 	m["ref"] = s
-	s.name = m["name"].(string)
+	s.name = getString(m["name"])
 	s.disabled = getBool(m["disabled"])
 	if list, ok := m["overlaps"]; ok {
 		xOverlaps := list.(xSlice)
@@ -446,7 +458,7 @@ func convRules(x xAny) []*Rule {
 	a := getSlice(x)
 	rules := make([]*Rule, len(a))
 	for i, x := range a {
-		rules[i] = convRule(x.(xMap))
+		rules[i] = convRule(getMap(x))
 	}
 	return rules
 }
@@ -499,4 +511,7 @@ func ImportFromPerl () {
 	protocols = convProtoMap(m["protocols"])
 	services = convServiceMap(m["services"])
 	pathRules = convPathRules(m["path_rules"])
+	managedRouters = convRouters(m["managed_routers"])
+	routingOnlyRouters = convRouters(m["routing_only_routers"])
+	outDir = getString(m["out_dir"])
 }
