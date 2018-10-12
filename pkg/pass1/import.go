@@ -28,6 +28,8 @@ func getBool(x xAny) bool {
 
 func getInt(x xAny) int {
 	switch i := x.(type) {
+	case nil:
+		return 0
 	case string:
 		n, err := strconv.Atoi(i)
 		if err != nil {
