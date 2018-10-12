@@ -1,4 +1,4 @@
-package main
+package pass1
 
 import (
 	"fmt"
@@ -43,6 +43,8 @@ func getInt(x xAny) int {
 
 func getString(x xAny) string {
 	switch a := x.(type) {
+	case nil:
+		return ""
 	case string:
 		return a
 	case []byte:
@@ -473,7 +475,7 @@ func convConfig(x xAny) Config {
 	return c
 }
 
-func importFromPerl () {
+func ImportFromPerl () {
 	var bytes []byte
 	var err error
 	if len(os.Args) > 1 {

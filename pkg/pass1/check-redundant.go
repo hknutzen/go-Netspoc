@@ -1,324 +1,10 @@
-package main
+package pass1
 
 import (
 	"fmt"
-	"net"
-	"os"
 	"sort"
 	"strings"
-	"time"
 )
-
-var version = "devel"
-
-type Config struct {
-	CheckDuplicateRules          string
-	CheckRedundantRules          string
-	CheckFullyRedundantRules     string
-	Verbose                      bool
-	TimeStamps                   bool
-	Pipe                         bool
-	MaxErrors                    int
-}
-
-type someObj interface {
-	name() string
-	network() *Network
-	up() someObj
-	address(nn noNatSet) net.IPNet
-	setCommon(m xMap) // for importFromPerl
-}
-type pathObj interface{}
-
-type IPObj struct {
-	Name string
-	IP   net.IP
-	unnumbered bool
-	negotiated bool
-	tunnel bool
-	bridged bool
-	Up   someObj
-}
-
-func (x *IPObj) name() string { return x.Name }
-func (x *IPObj) up() someObj { return x.Up }
-
-type Network struct {
-	IPObj
-	Mask       net.IPMask
-	Subnets    []*Subnet
-	Interfaces []*Interface
-	zone       *Zone
-	hasOtherSubnet bool
-	maxSecondaryNet *Network
-	nat        map[string]*Network
-	dynamic    bool
-	natTag     string
-}
-
-func (x *Network) network() *Network { return x }
-
-type NetObj struct {
-	IPObj
-	Network *Network
-}
-func (x *NetObj) network() *Network { return x.Network }
-
-type Subnet struct {
-	NetObj
-	Mask    net.IPMask
-	nat     map[string]net.IP
-	id      string
-}
-
-type Model struct {
-	CommentChar string
-	Class       string
-	DoAuth      bool
-	canObjectgroup bool
-	logModifiers map[string]string
-}
-type Hardware struct {}
-
-// Use pointer to map, because we need to test noNatSet for equality,
-// so we can use it as map key.
-type noNatSet *map[string]bool
-
-type aclInfo struct {
-	name string
-	noNatSet noNatSet
-	dstNoNatSet noNatSet
-	rules []*Rule
-	intfRules []*Rule
-	protectSelf bool
-	addPermit bool
-	addDeny bool
-	filterAnySrc bool
-	isCryptoAcl bool
-	needProtect []net.IPNet
-}
-
-type Router struct {
-	Name       string
-	DeviceName string
-	Managed    string
-	AdminIP    string
-	Model      Model
-	Log        map[string]string
-	logDeny    bool
-	Interfaces []*Interface
-	OrigInterfaces []*Interface
-	crosslinkInterfaces []*Interface
-	filterOnly []net.IPNet
-	needProtect bool
-	noGroupCode bool
-	noSecondaryOpt map[*Network]bool
-	Hardware   []*Hardware
-	OrigHardware []*Hardware
-	VrfMembers []*Router
-	OrigRouter *Router
-	IPv6       bool
-	aclList    []*aclInfo
-}
-
-type Interface struct {
-	NetObj
-	Router  *Router
-	nat     map[string]net.IP
-}
-
-type Zone struct {
-	Name     string
-	Networks []*Network
-}
-
-type modifiers struct {
-	reversed             bool
-	stateless            bool
-	oneway               bool
-	srcNet               bool
-	dstNet               bool
-	overlaps             bool
-	noCheckSupernetRules bool
-}
-
-type proto struct {
-	name        string
-	proto       string
-	icmpType    int
-	icmpCode    int
-	modifiers   modifiers
-	src *proto
-	dst *proto
-	main *proto
-	ports       [2]int
-	established bool
-	up          *proto
-	localUp     *proto
-	hasNeighbor bool
-	isUsed bool
-	printed string
-}
-
-var prtIP = &proto{name: "ip", proto: "ip"}
-
-type Service struct {
-	name             string
-	disabled         bool
-	ruleCount        int
-	duplicateCount   int
-	redundantCount   int
-	hasSameDupl      map[*Service]bool
-	Overlaps         []*Service
-	overlapsUsed     map[*Service]bool
-}
-
-type UnexpRule struct {
-	Prt           []protoOrName
-	Service       *Service
-}
-	
-type Rule struct {
-	Deny          bool
-	Src           []someObj
-	Dst           []someObj
-	Prt           []*proto
-	SrcRange      *proto
-	Log           string
-	Rule          *UnexpRule
-	SrcPath       pathObj
-	DstPath       pathObj
-	Stateless     bool
-	StatelessICMP bool
-	Overlaps      bool
-	someNonSecondary bool
-	somePrimary   bool
-}
-
-type PathRules struct {
-	Permit []*Rule
-	Deny   []*Rule
-}
-
-var config Config
-
-var startTime time.Time
-var errorCounter int
-
-func info(format string, args ...interface{}) {
-	if config.Verbose {
-		string := fmt.Sprintf(format, args...)
-		fmt.Fprintln(os.Stderr, string)
-	}
-}
-
-func checkAbort() {
-	errorCounter++
-	if errorCounter >= config.MaxErrors {
-		fmt.Fprintf(os.Stderr, "Aborted after %d errors\n", errorCounter)
-		os.Exit(errorCounter)
-	}
-}
-
-func errMsg(format string, args ...interface{}) {
-	string := "Error: " + fmt.Sprintf(format, args...)
-	fmt.Fprintln(os.Stderr, string)
-	checkAbort()
-}
-
-func warnMsg(format string, args ...interface{}) {
-	string := "Warning: " + fmt.Sprintf(format, args...)
-	fmt.Fprintln(os.Stderr, string)
-}
-
-func warnOrErrMsg (errType, format string, args ...interface{}) {
-	if errType == "warn" {
-        warnMsg(format, args...)
-    } else {
-        errMsg(format, args...)
-    }
-}
-
-func progress(msg string) {
-	if config.Verbose {
-		if config.TimeStamps {
-			msg = fmt.Sprintf("%.0fs %s", time.Since(startTime).Seconds(), msg)
-		}
-		info(msg)
-	}
-}
-
-type protoOrName interface{}
-type ProtoList []*proto
-
-func (l *ProtoList)push(p *proto) {
-	*l = append(*l, p)
-}
-
-var protocols map[string]*proto
-
-type ProtoGroup struct {
-	pairs []protoOrName
-	elements []*proto
-	recursive bool
-	isUsed bool
-}
-var protocolgroups map[string]*ProtoGroup
-
-func expandProtocols(list []protoOrName, context string) []*proto {
-	result := make(ProtoList, 0)
-	for _, pair := range list {
-		switch p := pair.(type) {
-			
-		// Handle anonymous protocol.
-		case *proto:
-			result.push(p)
-
-		case []string:
-			typ, name := p[0], p[1]
-			switch typ {
-			case "protocol":
-            if prt, ok := protocols[name]; ok {
-					result.push(prt)
-
-					// Currently needed by external program 'cut-netspoc'.
-					prt.isUsed = true
-            } else {
-					errMsg("Can't resolve reference to %s:%s in %s",
-						typ, name, context)
-            }
-			case "protocolgroup":
-            if prtgroup, ok := protocolgroups[name]; ok {
-					if prtgroup.recursive {
-						errMsg("Found recursion in definition of %s", context)
-						prtgroup.elements = nil
-
-					// Check if it has already been converted
-               // from names to references.
-					} else if !prtgroup.isUsed {
-						prtgroup.isUsed = true
-
-						// Detect recursive definitions.
-						prtgroup.recursive = true
-						prtgroup.elements =
-							expandProtocols(prtgroup.pairs, typ+":"+name)
-						prtgroup.recursive = false
-					}
-					for _, prt := range prtgroup.elements {
-						result.push(prt)
-					}
-            } else {
-					errMsg("Can't resolve reference to %s:%s in %s",
-						typ, name, context)
-            }
-			default:
-            errMsg("Unknown type of  %s:%s in %s",
-					typ, name, context)
-			}
-		}
-	}
-	return result
-}
 
 type ExpandedRule struct {
 	deny      bool
@@ -404,7 +90,7 @@ func getOrigPrt(rule *ExpandedRule) *proto {
 				return oPrt
 			}
 		default:
-			if mainPrt := oPrt.main; main != nil {
+			if mainPrt := oPrt.main; mainPrt != nil {
 				if mainPrt == prt {
 					return oPrt
 				}
@@ -603,8 +289,6 @@ func showRedundantRules() {
 		warnOrErrMsg(action, msg)
 	}
 }
-
-var services map[string]*Service
 
 func showFullyRedundantRules() {
 	action := config.CheckFullyRedundantRules
@@ -851,9 +535,7 @@ func findRedundantRules(cmpHash, chgHash ruleTree) int {
 	return count
 }
 
-var pathRules *PathRules
-
-func checkExpandedRules() {
+func CheckExpandedRules() {
 	progress("Checking for redundant rules")
 	var count int
 	dcount := 0
@@ -910,11 +592,4 @@ func checkExpandedRules() {
 	showFullyRedundantRules()
 	info("Expanded rule count: %d; duplicate: %d; redundant: %d",
 		count, dcount, rcount)
-}
-
-func main() {
-	startTime = time.Now()
-	importFromPerl()
-	checkExpandedRules()
-	os.Exit(errorCounter)
 }
