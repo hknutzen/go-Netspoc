@@ -4,31 +4,31 @@ package jcode
 type RouterData struct {
 	Model         string     `json:"model"`
 	ACLs          []*ACLInfo `json:"acls"`
-	FilterOnly    []string   `json:"filter_only"`
-	DoObjectgroup int        `json:"do_objectgroup"`
-	LogDeny       string     `json:"log_deny"`
+	FilterOnly    []string   `json:"filter_only,omitempty"`
+	DoObjectgroup int        `json:"do_objectgroup,omitempty"`
+	LogDeny       string     `json:"log_deny,omitempty"`
 }
 
 type ACLInfo struct {
 	Name         string   `json:"name"`
-	IsStdACL     int      `json:"is_std_acl"`
+	IsStdACL     int      `json:"is_std_acl,omitempty"`
 	IntfRules    []*Rule  `json:"intf_rules"`
 	Rules        []*Rule  `json:"rules"`
-	OptNetworks  []string `json:"opt_networks"`
-	NoOptAddrs   []string `json:"no_opt_addrs"`
-	NeedProtect  []string `json:"need_protect"`
-	FilterAnySrc int      `json:"filter_any_src"`
-	IsCryptoACL  int      `json:"is_crypto_acl"`
-	AddPermit    int      `json:"add_permit"`
-	AddDeny      int      `json:"add_deny"`
+	OptNetworks  []string `json:"opt_networks,omitempty"`
+	NoOptAddrs   []string `json:"no_opt_addrs,omitempty"`
+	NeedProtect  []string `json:"need_protect,omitempty"`
+	FilterAnySrc int      `json:"filter_any_src,omitempty"`
+	IsCryptoACL  int      `json:"is_crypto_acl,omitempty"`
+	AddPermit    int      `json:"add_permit,omitempty"`
+	AddDeny      int      `json:"add_deny,omitempty"`
 }
 
 type Rule struct {
-	Deny         int      `json:"deny"`
+	Deny         int      `json:"deny,omitempty"`
 	Src          []string `json:"src"`
 	Dst          []string `json:"dst"`
 	Prt          []string `json:"prt"`
-	SrcRange     string   `json:"src_range"`
-	Log          string   `json:"log"`
-	OptSecondary int      `json:"opt_secondary"`
+	SrcRange     string   `json:"src_range,omitempty"`
+	Log          string   `json:"log,omitempty"`
+	OptSecondary int      `json:"opt_secondary,omitempty"`
 }

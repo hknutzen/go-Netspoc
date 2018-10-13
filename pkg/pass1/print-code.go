@@ -8,37 +8,8 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"github.com/hknutzen/go-Netspoc/pkg/jcode"
 )
-
-type jRouterData struct {
-	Model         string     `json:"model"`
-	ACLs          []*jACLInfo `json:"acls"`
-	FilterOnly    []string   `json:"filter_only"`
-	DoObjectgroup int        `json:"do_objectgroup"`
-	LogDeny       string     `json:"log_deny"`
-}
-type jACLInfo struct {
-	Name         string   `json:"name"`
-	IsStdACL     int      `json:"is_std_acl"`
-	IntfRules    []*jRule `json:"intf_rules"`
-	Rules        []*jRule `json:"rules"`
-	OptNetworks  []string `json:"opt_networks"`
-	NoOptAddrs   []string `json:"no_opt_addrs"`
-	NeedProtect  []string `json:"need_protect"`
-	FilterAnySrc int      `json:"filter_any_src"`
-	IsCryptoACL  int      `json:"is_crypto_acl"`
-	AddPermit    int      `json:"add_permit"`
-	AddDeny      int      `json:"add_deny"`
-}
-type jRule struct {
-	Deny         int      `json:"deny"`
-	Src          []string `json:"src"`
-	Dst          []string `json:"dst"`
-	Prt          []string `json:"prt"`
-	SrcRange     string   `json:"src_range"`
-	Log          string   `json:"log"`
-	OptSecondary int      `json:"opt_secondary"`
-}
 
 func fatalErr(format string, args ...interface{}) {
 	string := "Error: " + fmt.Sprintf(format, args...)
@@ -98,7 +69,7 @@ func fullPrefixCode (n net.IPNet) string {
 	return fmt.Sprintf("%s/%d", n.IP.String(), prefix)
 }
 
-var nat2obj2address map[noNatSet]map[someObj]string
+var nat2obj2address = make(map[noNatSet]map[someObj]string)
 
 func getAddrCache(n noNatSet) map[someObj]string {
 	cache := nat2obj2address[n]
@@ -127,7 +98,7 @@ func getCachedAddrList(l []someObj, nn noNatSet, c map[someObj]string) []string 
 }
 
 func printAcls (fh *os.File, vrfMembers []*Router) {
-	var aclList []*jACLInfo
+	var aclList []*jcode.ACLInfo
 	for _, router := range vrfMembers {
 		managed         := router.Managed
 		secondaryFilter := strings.HasSuffix(managed, "secondary")
@@ -161,7 +132,8 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 		}
 		router.aclList = nil
 		for _, acl := range aref {
-			jACL := new(jACLInfo)
+			jACL := new(jcode.ACLInfo)
+			jACL.Name = acl.name
 			// Collect networks used in secondary optimization.
 			optAddr := make(map[*Network]bool)
 			// Collect networks forbidden in secondary optimization.
@@ -186,10 +158,10 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 				}
 			}
 
-			optRules := func(rules []*Rule) []*jRule {
-				jRules := make([]*jRule, len(rules))
+			optRules := func(rules []*Rule) []*jcode.Rule {
+				jRules := make([]*jcode.Rule, len(rules))
 				for i, rule := range rules {
-					newRule := new(jRule)
+					newRule := new(jcode.Rule)
 					jRules[i] = newRule
 					if rule.Deny {
 						newRule.Deny = 1
@@ -340,7 +312,7 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 	
 	router := vrfMembers[0]
 	model  := router.Model
-	result := &jRouterData{ Model: model.Class, ACLs: aclList }
+	result := &jcode.RouterData{ Model: model.Class, ACLs: aclList }
 
 	if filterOnly := router.filterOnly; filterOnly != nil {
 		list := make([]string, len(filterOnly))
@@ -356,11 +328,11 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 		result.LogDeny = "log"
 	}
 
-	b, err := jsoniter.Marshal(result)
+	b, err := jsoniter.MarshalIndent(result, "", " ")
 	if err != nil {
 		panic(err)
 	}
-	fmt.Fprint(fh, b)
+	fmt.Fprint(fh, string(b))
 }
 
 // Print generated code for each managed router.
@@ -373,9 +345,9 @@ func printCode (dir string) {
 	} else {
 		devlist := dir + "/.devlist"
 		var err error
-		toPass2, err = os.Open(devlist)
+		toPass2, err = os.Create(devlist)
 		if err != nil {
-			fatalErr("Can't open %s for writing: %v", devlist, err)
+			fatalErr("Can't %v", err)
 		}
 	}
 
@@ -444,8 +416,10 @@ func printCode (dir string) {
 			if len(ips) != 0 {
 				printHeader("IP =", strings.Join(ips, ","))
 			}
+*/
 			for _, vrouter := range vrfMembers {
 				seen[vrouter] = true
+/*
 				printRoutes(fd, vrouter)
 				if vrouter.Managed == "" {
 					continue
@@ -455,7 +429,9 @@ func printCode (dir string) {
 				generateAcls(fd, vrouter)
 				printAclSuffix(fd, vrouter)
 				printInterface(fd, vrouter)
+*/
 			}
+/*
 			printHeader("END", deviceName)
 			if err := fd.Close(); err != nil {
 				fatalErr("Can't close %s: %v", configFile, err)

@@ -95,8 +95,8 @@ type Router struct {
 	Name       string
 	DeviceName string
 	Managed    string
-	AdminIP    string
-	Model      Model
+	AdminIP    []string
+	Model      *Model
 	Log        map[string]string
 	logDeny    bool
 	Interfaces []*Interface

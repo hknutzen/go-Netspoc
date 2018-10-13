@@ -65,6 +65,14 @@ func getStrings(x xAny) []string {
 	}
 	return result
 }
+func getMapStringString(x xAny) map[string]string {
+	m := getMap(x)
+	ss := make(map[string]string)
+	for k, v := range m {
+		ss[k] = getString(v)
+	}
+	return ss
+}
 
 func getSlice(x xAny) xSlice {
 	switch a := x.(type) {
@@ -171,6 +179,21 @@ func convNoNatSet(x xAny) noNatSet {
 	return &n
 }
 
+func convModel(x xAny) *Model {
+	m := getMap(x)
+	if d, ok := m["ref"]; ok {
+		return d.(*Model)
+	}
+	d := new(Model)
+	m["ref"] = d
+	d.CommentChar = getString(m["comment_char"])
+	d.Class = getString(m["class"])
+	d.DoAuth = getBool(m["do_auth"])
+	d.canObjectgroup = getBool(m["can_objectgroup"])
+	d.logModifiers = getMapStringString(m["log_modifiers"])
+	return d
+}
+
 func convAclInfo(x xAny) *aclInfo {
 	m := getMap(x)
 	i := new(aclInfo)
@@ -188,6 +211,9 @@ func convAclInfo(x xAny) *aclInfo {
 }
 
 func convRouter(x xAny) *Router {
+	if x == nil {
+		return nil
+	}
 	m := getMap(x)
 	if r, ok := m["ref"]; ok {
 		return r.(*Router)
@@ -197,8 +223,22 @@ func convRouter(x xAny) *Router {
 	r.Name = getString(m["name"])
 	r.DeviceName = getString(m["device_name"])
 	r.Managed = getString(m["managed"])
-	r.AdminIP = getString(m["admin_ip"])
+	r.AdminIP = getStrings(m["admin_ip"])
+	r.Model   = convModel(m["model"])
+	r.Log     = getMapStringString(m["log"])
+	r.logDeny = getBool(m["log_deny"])
 	r.Interfaces = convInterfaces(m["interfaces"])
+	r.OrigInterfaces = convInterfaces(m["orig_interfaces"])
+	r.crosslinkInterfaces = convInterfaces(m["crosslink_interfaces"])
+	// filterOnly
+	r.needProtect = getBool(m["need_protect"])
+	r.noGroupCode = getBool(m["no_group_code"])
+	// noSecondaryOpt
+	// Hardware
+	// OrigHardware
+	r.VrfMembers = convRouters(m["vrf_members"])
+	r.OrigRouter = convRouter(m["orig_router"])
+	r.IPv6 = getBool(m["ipv6"])
 	if x, ok := m["acl_list"]; ok {
 		a := getSlice(x)
 		aclList := make([]*aclInfo, len(a))
@@ -210,6 +250,9 @@ func convRouter(x xAny) *Router {
 	return r
 }
 func convRouters(x xAny) []*Router {
+	if x == nil {
+		return nil
+	}
 	a := getSlice(x)
 	routers := make([]*Router, len(a))
 	for i, x := range a {
