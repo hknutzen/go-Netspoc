@@ -134,6 +134,21 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 		for _, acl := range aref {
 			jACL := new(jcode.ACLInfo)
 			jACL.Name = acl.name
+			if acl.addPermit {
+				jACL.AddPermit = 1
+			}
+			if acl.addDeny {
+				jACL.AddDeny = 1
+			}
+			if acl.filterAnySrc {
+				jACL.FilterAnySrc = 1
+			}
+			if acl.isStdACL {
+				jACL.IsStdACL = 1
+			}
+			if acl.isCryptoACL {
+				jACL.IsCryptoACL = 1
+			}
 			// Collect networks used in secondary optimization.
 			optAddr := make(map[*Network]bool)
 			// Collect networks forbidden in secondary optimization.
@@ -173,7 +188,7 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 						logCode := ""
 						for _, tag := range strings.Split(rule.Log, ",") {
 							if modifier, ok := activeLog[tag]; ok {
-								if modifier != "" {
+								if modifier != "0" {
 									normalized := model.logModifiers[modifier]
 									if normalized == ":subst" {
 										logCode = modifier

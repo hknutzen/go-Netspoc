@@ -87,7 +87,8 @@ type aclInfo struct {
 	addPermit bool
 	addDeny bool
 	filterAnySrc bool
-	isCryptoAcl bool
+	isStdACL bool
+	isCryptoACL bool
 	needProtect []net.IPNet
 }
 

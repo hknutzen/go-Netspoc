@@ -58,6 +58,9 @@ func getString(x xAny) string {
 	}
 }
 func getStrings(x xAny) []string {
+	if x == nil {
+		return nil
+	}
 	a := getSlice(x)
 	result := make([]string, len(a))
 	for i, elt := range a {
@@ -101,7 +104,7 @@ func getMap(x xAny) xMap {
 }
 
 func (x *IPObj) setCommon(m xMap) {
-	x.Name = m["name"].(string)
+	x.Name = getString(m["name"])
 	s := getString(m["ip"])
 	switch s {
 	case "unnumbered":
@@ -206,7 +209,8 @@ func convAclInfo(x xAny) *aclInfo {
 	i.addPermit = getBool(m["add_permit"])
 	i.addDeny = getBool(m["add_deny"])
 	i.filterAnySrc = getBool(m["filter_any_src"])
-	i.isCryptoAcl = getBool(m["is_crypto_acl"])
+	i.isCryptoACL = getBool(m["is_crypto_acl"])
+	i.isStdACL = getBool(m["is_std_acl"])
 	return i
 }
 
@@ -273,6 +277,9 @@ func convInterface(x xAny) *Interface {
 	return i
 }
 func convInterfaces(x xAny) []*Interface {
+	if x == nil {
+		return nil
+	}
 	a := getSlice(x)
 	interfaces := make([]*Interface, len(a))
 	for i, x := range a {
@@ -311,7 +318,7 @@ func convZone(x xAny) *Zone {
 	}
 	z := new(Zone)
 	m["ref"] = z
-	z.Name = m["name"].(string)
+	z.Name = getString(m["name"])
 	if list, ok := m["networks"]; ok {
 		xNetworks := list.(xSlice)
 		networks := make([]*Network, len(xNetworks))
@@ -376,11 +383,15 @@ func convProto(x xAny) *proto {
 	m["ref"] = p
 	p.name = getString(m["name"])
 	p.proto = getString(m["proto"])
-	if t, ok := m["icmp_type"]; ok {
+	if t, ok := m["type"]; ok {
 		p.icmpType = t.(int)
+	} else {
+		p.icmpType = -1
 	}
-	if c, ok := m["icmp_code"]; ok {
+	if c, ok := m["code"]; ok {
 		p.icmpCode = c.(int)
+	} else {
+		p.icmpCode = -1
 	}
 	if m, ok := m["modifiers"]; ok {
 		p.modifiers = convModifiers(m)
@@ -498,6 +509,9 @@ func convRule(m xMap) *Rule {
 }
 
 func convRules(x xAny) []*Rule {
+	if x == nil {
+		return nil
+	}
 	a := getSlice(x)
 	rules := make([]*Rule, len(a))
 	for i, x := range a {

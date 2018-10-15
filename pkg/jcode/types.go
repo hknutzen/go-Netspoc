@@ -11,16 +11,16 @@ type RouterData struct {
 
 type ACLInfo struct {
 	Name         string   `json:"name"`
-	IsStdACL     int      `json:"is_std_acl,omitempty"`
-	IntfRules    []*Rule  `json:"intf_rules"`
 	Rules        []*Rule  `json:"rules"`
+	IntfRules    []*Rule  `json:"intf_rules"`
 	OptNetworks  []string `json:"opt_networks,omitempty"`
 	NoOptAddrs   []string `json:"no_opt_addrs,omitempty"`
 	NeedProtect  []string `json:"need_protect,omitempty"`
-	FilterAnySrc int      `json:"filter_any_src,omitempty"`
-	IsCryptoACL  int      `json:"is_crypto_acl,omitempty"`
 	AddPermit    int      `json:"add_permit,omitempty"`
 	AddDeny      int      `json:"add_deny,omitempty"`
+	FilterAnySrc int      `json:"filter_any_src,omitempty"`
+	IsStdACL     int      `json:"is_std_acl,omitempty"`
+	IsCryptoACL  int      `json:"is_crypto_acl,omitempty"`
 }
 
 type Rule struct {
