@@ -300,12 +300,12 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 			// It converts protocol to IP and
 			// src/dst address to network address.
 			// It is controlled by this three attributes:
-			// - {optSecondary enables secondary optimization
-			// - if enabled, then networks in {optNetworks are used
+			// - OptSecondary enables secondary optimization
+			// - if enabled, then networks in OptNetworks are used
 			//   for optimization.
-			// - if src/dst matches {noOptNetworks, then
+			// - if src/dst matches NoOptAddrs, then
 			//   optimization is disabled for this single rule.
-			//   This is needed because {optSecondary is set for
+			//   This is needed because OptSecondary is set for
 			//   grouped rules and we need to control optimization
 			//   for sinlge rules.
 			var addrList []string

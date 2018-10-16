@@ -19,6 +19,9 @@ func getBool(x xAny) bool {
 		return false
 	case string:
 		return b != "" && b != "0"
+	case []byte:
+		s := string(b[:])
+		return s != "" && s != "0"
 	case int:
 		return b != 0
 	default:
@@ -41,6 +44,11 @@ func getInt(x xAny) int {
 	default:
 		panic(fmt.Errorf("Expected int but got %v", i))
 	}
+}
+
+func getIP(x xAny) net.IP {
+	s := getString(x)
+	return net.IP(s)
 }
 
 func getString(x xAny) string {
@@ -127,7 +135,28 @@ func (x *NetObj) setCommon(m xMap) {
 	x.Network = convNetwork(m["network"])
 }
 
+func convNetNat(x xAny) natMap {
+	m := getMap(x)
+	n := make(map[string]*Network)
+	for tag, natNet := range m {
+		n[tag] = convNetwork(natNet)
+	}
+	return n
+}
+
+func convIPNat(x xAny) map[string]net.IP {
+	m := getMap(x)
+	n := make(map[string]net.IP)
+	for tag, x := range m {
+		n[tag] = getIP(x)
+	}
+	return n
+}
+
 func convNetwork(x xAny) *Network {
+	if x == nil {
+		return nil
+	}
 	m := getMap(x)
 	if n, ok := m["ref"]; ok {
 		return n.(*Network)
@@ -146,14 +175,13 @@ func convNetwork(x xAny) *Network {
 		}
 		n.Subnets = subnets
 	}
-	if list, ok := m["interfaces"]; ok {
-		xInterfaces := list.(xSlice)
-		interfaces := make([]*Interface, len(xInterfaces))
-		for i, xInterface := range xInterfaces {
-			interfaces[i] = convInterface(xInterface)
-		}
-		n.Interfaces = interfaces
-	}
+	n.Interfaces = convInterfaces(m["interfaces"])
+	n.zone = convZone(m["zone"])
+	n.hasOtherSubnet = getBool(m["has_other_subnet"])
+	n.maxSecondaryNet = convNetwork(m["max_secondary_net"])
+	n.nat = convNetNat(m["nat"])
+	n.dynamic = getBool(m["dynamic"])
+	n.natTag = getString(m["nat_tag"])
 	return n
 }
 
@@ -166,19 +194,24 @@ func convSubnet(x xAny) *Subnet {
 	m["ref"] = s
 	s.setCommon(m)
 	s.Mask = m["mask"].([]byte)
+	s.nat = convIPNat(m["nat"])
+	s.id = getString(m["id"])
 	return s
 }
 
 func convNoNatSet(x xAny) noNatSet {
+	if x == nil {
+		return nil
+	}
 	m := getMap(x)
 	if n, ok := m[":ref"]; ok {
 		return n.(noNatSet)
 	}
 	n := make(map[string]bool)
-	m[":ref"] = noNatSet(&n)
 	for tag := range m {
 		n[tag] = true
 	}
+	m[":ref"] = noNatSet(&n)
 	return &n
 }
 
@@ -202,7 +235,7 @@ func convAclInfo(x xAny) *aclInfo {
 	i := new(aclInfo)
 	i.name = getString(m["name"])
 	i.noNatSet = convNoNatSet(m["no_nat_set"])
-	i.dstNoNatSet = convNoNatSet(m["dstNoNatSet"])
+	i.dstNoNatSet = convNoNatSet(m["dst_no_nat_set"])
 	i.rules = convRules(m["rules"])
 	i.intfRules = convRules(m["intf_rules"])
 	i.protectSelf = getBool(m["protect_self"])
@@ -237,7 +270,14 @@ func convRouter(x xAny) *Router {
 	// filterOnly
 	r.needProtect = getBool(m["need_protect"])
 	r.noGroupCode = getBool(m["no_group_code"])
-	// noSecondaryOpt
+	if x, ok := m["no_secondary_opt"]; ok {
+		m := getMap(x)
+		n := make(map[*Network]bool)
+		for _, x := range m {
+			n[convNetwork(x)] = true
+		}
+		r.noSecondaryOpt = n
+	}
 	// Hardware
 	// OrigHardware
 	r.VrfMembers = convRouters(m["vrf_members"])
@@ -274,6 +314,7 @@ func convInterface(x xAny) *Interface {
 	m["ref"] = i
 	i.setCommon(m)
 	i.Router = convRouter(m["router"])
+	i.nat = convIPNat(m["nat"])
 	return i
 }
 func convInterfaces(x xAny) []*Interface {
@@ -505,6 +546,8 @@ func convRule(m xMap) *Rule {
 	r.StatelessICMP = getBool(m["stateless_icmp"])
 	r.Overlaps = getBool(m["overlaps"])
 	r.Rule = convUnexpRule(m["rule"])
+	r.someNonSecondary = getBool(m["some_non_secondary"])
+	r.somePrimary = getBool(m["some_primary"])
 	return r
 }
 

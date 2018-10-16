@@ -36,6 +36,8 @@ type IPObj struct {
 func (x *IPObj) name() string { return x.Name }
 func (x *IPObj) up() someObj { return x.Up }
 
+type natMap map[string]*Network
+
 type Network struct {
 	IPObj
 	Mask       net.IPMask
