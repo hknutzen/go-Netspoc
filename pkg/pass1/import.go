@@ -625,6 +625,7 @@ func ImportFromPerl () {
 	}
 	config = convConfig(m["config"])
 	startTime = time.Unix(int64(m["start_time"].(int)), 0)
+	progress("Importing from Perl")
 	prtIP = convProto(m["prt_ip"])
 	protocols = convProtoMap(m["protocols"])
 	services = convServiceMap(m["services"])
