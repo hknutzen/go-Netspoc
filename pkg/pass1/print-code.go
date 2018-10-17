@@ -188,7 +188,7 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 						logCode := ""
 						for _, tag := range strings.Split(rule.Log, ",") {
 							if modifier, ok := activeLog[tag]; ok {
-								if modifier != "0" {
+								if modifier != "" {
 									normalized := model.logModifiers[modifier]
 									if normalized == ":subst" {
 										logCode = modifier
@@ -352,7 +352,7 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 
 // Print generated code for each managed router.
 func printCode (dir string) {
-//	progress("Printing intermediate code")
+	progress("Printing ACLs")
 
 	var toPass2 *os.File
 	if config.Pipe {
