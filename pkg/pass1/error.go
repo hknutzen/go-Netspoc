@@ -43,7 +43,7 @@ func warnOrErrMsg (errType, format string, args ...interface{}) {
 func progress(msg string) {
 	if config.Verbose {
 		if config.TimeStamps {
-			msg = fmt.Sprintf("%.0fs %s", time.Since(startTime).Seconds(), msg)
+			msg = fmt.Sprintf("%3.0fs %s", time.Since(startTime).Seconds(), msg)
 		}
 		info(msg)
 	}

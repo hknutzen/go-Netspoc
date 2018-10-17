@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type xAny interface{}
@@ -623,6 +624,7 @@ func ImportFromPerl () {
 		panic(err)
 	}
 	config = convConfig(m["config"])
+	startTime = time.Unix(int64(m["start_time"].(int)), 0)
 	prtIP = convProto(m["prt_ip"])
 	protocols = convProtoMap(m["protocols"])
 	services = convServiceMap(m["services"])
