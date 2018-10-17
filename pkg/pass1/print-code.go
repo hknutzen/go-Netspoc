@@ -371,12 +371,12 @@ func printCode (dir string) {
 	printRouter := func (routers []*Router) {
 		for _, router := range routers {
 			if seen[router] {
-				return
+				continue
 			}
 
 			// Ignore split part of crypto router.
 			if router.OrigRouter != nil {
-				return
+				continue
 			}
 
 			deviceName := router.DeviceName
