@@ -7,6 +7,6 @@ import (
 
 func main() {
 	pass1.ImportFromPerl()
-	pass1.CheckExpandedRules()
+	pass1.CheckRedundantRules()
 	os.Exit(pass1.ErrorCounter)
 }

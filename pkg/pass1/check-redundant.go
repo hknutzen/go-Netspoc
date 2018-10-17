@@ -535,7 +535,7 @@ func findRedundantRules(cmpHash, chgHash ruleTree) int {
 	return count
 }
 
-func CheckExpandedRules() {
+func CheckRedundantRules() {
 	progress("Checking for redundant rules")
 	var count int
 	dcount := 0
