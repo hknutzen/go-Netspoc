@@ -253,7 +253,7 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 
 									// Ignore loopback network.
 									if isHostMask(subst.Mask) {
-										continue 
+										continue
 									}
 
 									// Network or aggregate.
@@ -278,7 +278,7 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 						}
 						newRule.OptSecondary = 1
 					}
-					
+
 					newRule.Src = getCachedAddrList(rule.Src, noNatSet, addrCache)
 					newRule.Dst = getCachedAddrList(
 						rule.Dst, dstNoNatSet, dstAddrCache)
@@ -314,7 +314,7 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 			}
 			sort.Strings(addrList)
 			jACL.OptNetworks = addrList
-			
+
 			addrList = nil
 			for n := range noOptAddrs {
 				addrList = append(addrList, getCachedAddr(n, noNatSet, addrCache))
@@ -324,7 +324,7 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 			aclList = append(aclList, jACL)
 		}
 	}
-	
+
 	router := vrfMembers[0]
 	model  := router.Model
 	result := &jcode.RouterData{ Model: model.Class, ACLs: aclList }
@@ -352,7 +352,7 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 
 // Print generated code for each managed router.
 func printCode (dir string) {
-	progress("Printing intermediate code")
+//	progress("Printing intermediate code")
 
 	var toPass2 *os.File
 	if config.Pipe {
@@ -382,12 +382,13 @@ func printCode (dir string) {
 			deviceName := router.DeviceName
 			path := deviceName
 			if router.IPv6 {
-				path = "ipv6/path"
-				v6dir := "dir/ipv6"
-				if checkedV6dir || isDir(v6dir) {
+				path = "ipv6/" + path
+				v6dir := dir + "/ipv6"
+				if !checkedV6dir && !isDir(v6dir) {
+					checkedV6dir = true
 					err := os.Mkdir(v6dir, 0777)
 					if err != nil {
-						fatalErr("Can't create output directory v6dir: %v", err)
+						fatalErr("Can't %v", err)
 					}
 				}
 			}

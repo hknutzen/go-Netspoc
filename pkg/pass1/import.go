@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"strings"
 )
 
 type xAny interface{}
@@ -267,7 +268,17 @@ func convRouter(x xAny) *Router {
 	r.Interfaces = convInterfaces(m["interfaces"])
 	r.OrigInterfaces = convInterfaces(m["orig_interfaces"])
 	r.crosslinkInterfaces = convInterfaces(m["crosslink_interfaces"])
-	// filterOnly
+	if x, ok := m["filter_only"]; ok {
+		a := getSlice(x)
+		b := make([]net.IPNet, len(a))
+		for i, xPair := range a {
+			pair := getSlice(xPair)
+			ip := getIP(pair[0])
+			mask := getIP(pair[1])
+			b[i] = net.IPNet{IP: ip, Mask: net.IPMask(mask)}
+		}
+		r.filterOnly = b
+	}
 	r.needProtect = getBool(m["need_protect"])
 	r.noGroupCode = getBool(m["no_group_code"])
 	if x, ok := m["no_secondary_opt"]; ok {
@@ -376,13 +387,18 @@ func convPathObj(x xAny) pathObj {
 	if o, ok := m["ref"]; ok {
 		return o.(pathObj)
 	}
-	if _, ok := m["router"]; ok {
+	name := getString(m["name"])
+	prefix := strings.SplitN(name, ":", 2)[0]
+	switch prefix {
+	case "interface":
 		return convInterface(x)
-	}
-	if _, ok := m["managed"]; ok {
+	case "router":
 		return convRouter(x)
+//	case "any":
+	default:
+		return convZone(x)
 	}
-	return convZone(x)
+//	panic(fmt.Errorf("Expected interface|router|zone but got %v", name))
 }
 
 func convModifiers(x xAny) modifiers {
