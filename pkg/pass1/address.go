@@ -30,50 +30,35 @@ func (obj *Network) address (nn noNatSet) net.IPNet {
 
 func (obj *Subnet) address (nn noNatSet) net.IPNet {
 	network := getNatNetwork(obj.Network, nn)
-	if network.dynamic {
-		natTag := network.natTag
-		if ip, ok := obj.nat[natTag]; ok {
-			
-			// Single static NAT IP for this host.
-			return net.IPNet{IP: ip, Mask: getHostMask(ip) }
-		} else {
-			return net.IPNet{IP: network.IP, Mask: network.Mask}
-		}
-	} else {
-		
-		// Take higher bits from network NAT, lower bits from original IP.
-		// This works with and without NAT.
-		n := len(network.IP)
-		ip := make(net.IP, n)
-		for i := 0; i < n; i++ {
-			ip[i] = network.IP[i] | obj.IP[i] & ^network.Mask[i]
-		}
-		return net.IPNet{IP: ip, Mask: obj.Mask}
-	}
+	return natAddress(obj.IP, obj.Mask, obj.nat, network)
 }
 
 func (obj *Interface) address (nn noNatSet) net.IPNet {
 	network := getNatNetwork(obj.Network, nn)
 	if obj.negotiated {
 		return net.IPNet{IP: network.IP, Mask: network.Mask}
-	} else if network.dynamic {
+	}
+	return natAddress(obj.IP, getHostMask(obj.IP), obj.nat, network)
+}
+
+func natAddress (ip net.IP, mask net.IPMask, nat map[string]net.IP, network *Network) net.IPNet {
+	if network.dynamic {
 		natTag := network.natTag
-		if ip, ok := obj.nat[natTag]; ok {
+		if ip, ok := nat[natTag]; ok {
 				
 			// Single static NAT IP for this interface.
 			return net.IPNet{IP: ip, Mask: getHostMask(ip) }
 		} else {
 			return net.IPNet{IP: network.IP, Mask: network.Mask}
 		}
-	} else {
-		
-		// Take higher bits from network NAT, lower bits from original IP.
-		// This works with and without NAT.
-		n := len(network.IP)
-		ip := make(net.IP, n)
-		for i := 0; i < n; i++ {
-			ip[i] = network.IP[i] | obj.IP[i] & ^network.Mask[i]
-		}
-		return net.IPNet{IP: ip, Mask: getHostMask(ip) }
 	}
+		
+	// Take higher bits from network NAT, lower bits from original IP.
+	// This works with and without NAT.
+	n := len(network.IP)
+	natIP := make(net.IP, n)
+	for i := 0; i < n; i++ {
+		natIP[i] = network.IP[i] | ip[i] & ^network.Mask[i]
+	}
+	return net.IPNet{IP: natIP, Mask: mask }
 }
