@@ -547,8 +547,13 @@ func convUnexpRule(x xAny) *UnexpRule {
 	return r
 }
 
-func convRule(m xMap) *Rule {
+func convRule(x xAny) *Rule {
+	m := getMap(x)
+	if r, ok := m["ref"]; ok {
+		return r.(*Rule)
+	}
 	r := new(Rule)
+	m["ref"] = r
 	r.Deny = getBool(m["deny"])
 	r.Src = convSomeObjects(m["src"])
 	r.Dst = convSomeObjects(m["dst"])
@@ -575,7 +580,7 @@ func convRules(x xAny) []*Rule {
 	a := getSlice(x)
 	rules := make([]*Rule, len(a))
 	for i, x := range a {
-		rules[i] = convRule(getMap(x))
+		rules[i] = convRule(x)
 	}
 	return rules
 }
