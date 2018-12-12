@@ -153,6 +153,9 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 			optAddr := make(map[*Network]bool)
 			// Collect networks forbidden in secondary optimization.
 			noOptAddrs := make(map[someObj]bool)
+			// Collect objects in optAddr and noOptAddrs, that need
+			// dstNoNatSet for address calculation.
+			dstObj := make(map[someObj]bool)
 			noNatSet := acl.noNatSet
 			addrCache := getAddrCache(noNatSet)
 			dstNoNatSet := acl.dstNoNatSet
@@ -207,7 +210,17 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 
 					if secondaryFilter && rule.someNonSecondary ||
 						standardFilter && rule.somePrimary {
-						for _, objList := range [][]someObj{rule.Src, rule.Dst} {
+						for _, isSrc := range []bool{true, false} {
+							var objList []someObj
+							dstNat := false
+							if isSrc {
+								objList = rule.Src
+							} else {
+								objList = rule.Dst
+								if noNatSet != dstNoNatSet {
+									dstNat = true
+								}
+							}
 							for _, obj := range objList {
 
 								// Prepare secondary optimization.
@@ -243,6 +256,9 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 									if noOpt := router.noSecondaryOpt; noOpt != nil {
 										if noOpt[net] {
 											noOptAddrs[obj] = true
+											if dstNat {
+												dstObj[obj] = true
+											}
 											continue
 										}
 									}
@@ -265,6 +281,9 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 									// supernet rules.
 									if o.hasOtherSubnet {
 										noOptAddrs[obj] = true
+										if dstNat {
+											dstObj[obj] = true
+										}
 										continue
 									}
 									max := o.maxSecondaryNet
@@ -274,6 +293,9 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 									subst = max
 								}
 								optAddr[subst] = true
+								if dstNat {
+									dstObj[subst] = true
+								}
 							}
 						}
 						newRule.OptSecondary = 1
@@ -310,14 +332,26 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 			//   for sinlge rules.
 			var addrList []string
 			for n := range optAddr {
-				addrList = append(addrList, getCachedAddr(n, noNatSet, addrCache))
+				var a string
+				if dstObj[n] {
+					a = fullPrefixCode(n.address(dstNoNatSet))
+				} else {
+					a = getCachedAddr(n, noNatSet, addrCache)
+				}
+				addrList = append(addrList, a)
 			}
 			sort.Strings(addrList)
 			jACL.OptNetworks = addrList
 
 			addrList = nil
 			for n := range noOptAddrs {
-				addrList = append(addrList, getCachedAddr(n, noNatSet, addrCache))
+				var a string
+				if dstObj[n] {
+					a = fullPrefixCode(n.address(dstNoNatSet))
+				} else {
+					a = getCachedAddr(n, noNatSet, addrCache)
+				}
+				addrList = append(addrList, a)
 			}
 			sort.Strings(addrList)
 			jACL.NoOptAddrs = addrList
