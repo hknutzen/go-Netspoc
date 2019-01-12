@@ -201,19 +201,19 @@ func convSubnet(x xAny) *Subnet {
 	return s
 }
 
-func convNoNatSet(x xAny) noNatSet {
+func convNatSet(x xAny) natSet {
 	if x == nil {
 		return nil
 	}
 	m := getMap(x)
 	if n, ok := m[":ref"]; ok {
-		return n.(noNatSet)
+		return n.(natSet)
 	}
 	n := make(map[string]bool)
 	for tag := range m {
 		n[tag] = true
 	}
-	m[":ref"] = noNatSet(&n)
+	m[":ref"] = natSet(&n)
 	return &n
 }
 
@@ -236,8 +236,8 @@ func convAclInfo(x xAny) *aclInfo {
 	m := getMap(x)
 	i := new(aclInfo)
 	i.name = getString(m["name"])
-	i.noNatSet = convNoNatSet(m["no_nat_set"])
-	i.dstNoNatSet = convNoNatSet(m["dst_no_nat_set"])
+	i.natSet = convNatSet(m["nat_set"])
+	i.dstNatSet = convNatSet(m["dst_nat_set"])
 	i.rules = convRules(m["rules"])
 	i.intfRules = convRules(m["intf_rules"])
 	i.protectSelf = getBool(m["protect_self"])
@@ -246,7 +246,19 @@ func convAclInfo(x xAny) *aclInfo {
 	i.filterAnySrc = getBool(m["filter_any_src"])
 	i.isCryptoACL = getBool(m["is_crypto_acl"])
 	i.isStdACL = getBool(m["is_std_acl"])
+	i.subAclList = convAclInfos(m["sub_acl_list"])
 	return i
+}
+func convAclInfos(x xAny) []*aclInfo {
+	if x == nil {
+		return nil
+	}
+	a := getSlice(x)
+	aclList := make([]*aclInfo, len(a))
+	for i, x := range a {
+		aclList[i] = convAclInfo(x)
+	}
+	return aclList
 }
 
 func convRouter(x xAny) *Router {
@@ -295,14 +307,7 @@ func convRouter(x xAny) *Router {
 	r.VrfMembers = convRouters(m["vrf_members"])
 	r.OrigRouter = convRouter(m["orig_router"])
 	r.IPv6 = getBool(m["ipv6"])
-	if x, ok := m["acl_list"]; ok {
-		a := getSlice(x)
-		aclList := make([]*aclInfo, len(a))
-		for i, x := range a {
-			aclList[i] = convAclInfo(x)
-		}
-		r.aclList = aclList
-	}
+	r.aclList = convAclInfos(m["acl_list"])
 	return r
 }
 func convRouters(x xAny) []*Router {

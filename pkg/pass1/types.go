@@ -18,7 +18,7 @@ type someObj interface {
 	name() string
 	network() *Network
 	up() someObj
-	address(nn noNatSet) net.IPNet
+	address(nn natSet) net.IPNet
 	setCommon(m xMap) // for importFromPerl
 }
 type pathObj interface{}
@@ -75,14 +75,14 @@ type Model struct {
 }
 type Hardware struct {}
 
-// Use pointer to map, because we need to test noNatSet for equality,
+// Use pointer to map, because we need to test natSet for equality,
 // so we can use it as map key.
-type noNatSet *map[string]bool
+type natSet *map[string]bool
 
 type aclInfo struct {
 	name string
-	noNatSet noNatSet
-	dstNoNatSet noNatSet
+	natSet natSet
+	dstNatSet natSet
 	rules []*Rule
 	intfRules []*Rule
 	protectSelf bool
@@ -92,6 +92,7 @@ type aclInfo struct {
 	isStdACL bool
 	isCryptoACL bool
 	needProtect []net.IPNet
+	subAclList []*aclInfo
 }
 
 type Router struct {

@@ -4,12 +4,9 @@ import (
 	"net"
 )
 
-func getNatNetwork(network *Network, noNatSet noNatSet) *Network {
-	if network.nat != nil && noNatSet != nil {
-		for tag, natNet := range network.nat {
-			if (*noNatSet)[tag] {
-				continue
-			}
+func getNatNetwork(network *Network, natSet natSet) *Network {
+	for tag, natNet := range network.nat {
+		if (*natSet)[tag] {
 			return natNet
 		}
 	}
@@ -23,17 +20,17 @@ func getHostMask(ip net.IP) net.IPMask {
 	return net.CIDRMask(128, 128)
 }
 
-func (obj *Network) address (nn noNatSet) net.IPNet {
+func (obj *Network) address (nn natSet) net.IPNet {
 	network := getNatNetwork(obj, nn)
 	return net.IPNet{IP: network.IP, Mask: network.Mask}
 }
 
-func (obj *Subnet) address (nn noNatSet) net.IPNet {
+func (obj *Subnet) address (nn natSet) net.IPNet {
 	network := getNatNetwork(obj.Network, nn)
 	return natAddress(obj.IP, obj.Mask, obj.nat, network)
 }
 
-func (obj *Interface) address (nn noNatSet) net.IPNet {
+func (obj *Interface) address (nn natSet) net.IPNet {
 	network := getNatNetwork(obj.Network, nn)
 	if obj.negotiated {
 		return net.IPNet{IP: network.IP, Mask: network.Mask}

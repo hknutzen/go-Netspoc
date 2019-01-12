@@ -1,6 +1,5 @@
 package pass1;
 
-
 import (
 	"fmt"
 	"github.com/json-iterator/go"
@@ -69,9 +68,9 @@ func fullPrefixCode (n net.IPNet) string {
 	return fmt.Sprintf("%s/%d", n.IP.String(), prefix)
 }
 
-var nat2obj2address = make(map[noNatSet]map[someObj]string)
+var nat2obj2address = make(map[natSet]map[someObj]string)
 
-func getAddrCache(n noNatSet) map[someObj]string {
+func getAddrCache(n natSet) map[someObj]string {
 	cache := nat2obj2address[n]
 	if cache == nil {
 		cache = make(map[someObj]string)
@@ -80,19 +79,19 @@ func getAddrCache(n noNatSet) map[someObj]string {
 	return cache
 }
 
-func getCachedAddr(o someObj, nn noNatSet, c map[someObj]string) string {
+func getCachedAddr(o someObj, n natSet, c map[someObj]string) string {
 	if a, ok := c[o]; ok {
 		return a
 	}
-	a := fullPrefixCode(o.address(nn))
+	a := fullPrefixCode(o.address(n))
 	c[o] = a
 	return a
 }
 
-func getCachedAddrList(l []someObj, nn noNatSet, c map[someObj]string) []string {
+func getCachedAddrList(l []someObj, n natSet, c map[someObj]string) []string {
 	result := make([]string, len(l))
 	for i,o := range l {
-		result[i] = getCachedAddr(o, nn, c)
+		result[i] = getCachedAddr(o, n, c)
 	}
 	return result
 }
@@ -126,12 +125,7 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 			}
 		}
 
-		aref := router.aclList
-		if aref == nil {
-			continue
-		}
-		router.aclList = nil
-		for _, acl := range aref {
+		process := func(acl *aclInfo) *jcode.ACLInfo {
 			jACL := new(jcode.ACLInfo)
 			jACL.Name = acl.name
 			if acl.addPermit {
@@ -154,20 +148,20 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 			// Collect networks forbidden in secondary optimization.
 			noOptAddrs := make(map[someObj]bool)
 			// Collect objects in optAddr and noOptAddrs, that need
-			// dstNoNatSet for address calculation.
+			// dstNatSet for address calculation.
 			dstObj := make(map[someObj]bool)
-			noNatSet := acl.noNatSet
-			addrCache := getAddrCache(noNatSet)
-			dstNoNatSet := acl.dstNoNatSet
-			if dstNoNatSet == nil {
-				dstNoNatSet = noNatSet
+			natSet := acl.natSet
+			addrCache := getAddrCache(natSet)
+			dstNatSet := acl.dstNatSet
+			if dstNatSet == nil {
+				dstNatSet = natSet
 			}
-			dstAddrCache := getAddrCache(dstNoNatSet)
+			dstAddrCache := getAddrCache(dstNatSet)
 			if needProtect != nil && acl.protectSelf {
 				// Remove duplicate addresses from redundancy interfaces.
 				seen := make(map[string]bool)
 				for _, intf := range needProtect {
-					a := getCachedAddr(intf, noNatSet, addrCache)
+					a := getCachedAddr(intf, natSet, addrCache)
 					if seen[a] {
 						continue
 					}
@@ -217,7 +211,7 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 								objList = rule.Src
 							} else {
 								objList = rule.Dst
-								if noNatSet != dstNoNatSet {
+								if natSet != dstNatSet {
 									dstNat = true
 								}
 							}
@@ -301,9 +295,9 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 						newRule.OptSecondary = 1
 					}
 
-					newRule.Src = getCachedAddrList(rule.Src, noNatSet, addrCache)
+					newRule.Src = getCachedAddrList(rule.Src, natSet, addrCache)
 					newRule.Dst = getCachedAddrList(
-						rule.Dst, dstNoNatSet, dstAddrCache)
+						rule.Dst, dstNatSet, dstAddrCache)
 					prtList := make([]string, len(rule.Prt))
 					for i, p := range rule.Prt {
 						prtList[i] = printPrt(p)
@@ -334,9 +328,9 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 			for n := range optAddr {
 				var a string
 				if dstObj[n] {
-					a = fullPrefixCode(n.address(dstNoNatSet))
+					a = fullPrefixCode(n.address(dstNatSet))
 				} else {
-					a = getCachedAddr(n, noNatSet, addrCache)
+					a = getCachedAddr(n, natSet, addrCache)
 				}
 				addrList = append(addrList, a)
 			}
@@ -347,15 +341,31 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 			for n := range noOptAddrs {
 				var a string
 				if dstObj[n] {
-					a = fullPrefixCode(n.address(dstNoNatSet))
+					a = fullPrefixCode(n.address(dstNatSet))
 				} else {
-					a = getCachedAddr(n, noNatSet, addrCache)
+					a = getCachedAddr(n, natSet, addrCache)
 				}
 				addrList = append(addrList, a)
 			}
 			sort.Strings(addrList)
 			jACL.NoOptAddrs = addrList
-			aclList = append(aclList, jACL)
+			return jACL
+		}
+
+		aref := router.aclList
+		router.aclList = nil
+		for _, acl := range aref {
+			result := process(acl)
+			for _, acl := range acl.subAclList {
+				subResult := process(acl)
+				result.Rules = append(result.Rules, subResult.Rules...)
+				result.IntfRules = append(result.IntfRules, subResult.IntfRules...)
+				result.OptNetworks =
+					append(result.OptNetworks, subResult.OptNetworks...)
+				result.NoOptAddrs =
+					append(result.NoOptAddrs, subResult.NoOptAddrs...)
+			}
+			aclList = append(aclList, result)
 		}
 	}
 
