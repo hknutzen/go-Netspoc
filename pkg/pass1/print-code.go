@@ -328,7 +328,7 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 			for n := range optAddr {
 				var a string
 				if dstObj[n] {
-					a = fullPrefixCode(n.address(dstNatSet))
+					a = getCachedAddr(n, dstNatSet, dstAddrCache)
 				} else {
 					a = getCachedAddr(n, natSet, addrCache)
 				}
@@ -341,7 +341,7 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 			for n := range noOptAddrs {
 				var a string
 				if dstObj[n] {
-					a = fullPrefixCode(n.address(dstNatSet))
+					a = getCachedAddr(n, dstNatSet, dstAddrCache)
 				} else {
 					a = getCachedAddr(n, natSet, addrCache)
 				}
