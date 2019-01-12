@@ -162,6 +162,10 @@ func collectDuplicateRules(rule, other *ExpandedRule) {
 	}
 	oservice.hasSameDupl[service] = true
 
+	// return early, so overlapsUsed isn't set below.
+	if rule.overlaps && other.overlaps {
+		return
+	}
 	for _, overlap := range service.Overlaps {
 		if oservice == overlap {
 			service.overlapsUsed[overlap] = true
@@ -173,9 +177,6 @@ func collectDuplicateRules(rule, other *ExpandedRule) {
 			oservice.overlapsUsed[overlap] = true
 			return
 		}
-	}
-	if rule.overlaps && other.overlaps {
-		return
 	}
 	if config.CheckDuplicateRules == "0" {
 		return
@@ -333,7 +334,7 @@ func warnUnusedOverlaps() {
 					continue
 				}
 				errList = append(errList,
-					fmt.Sprintf("Useless 'overlaps = %s'  in %s",
+					fmt.Sprintf("Useless 'overlaps = %s' in %s",
 						overlap.name, service.name))
 			}
 		}
