@@ -148,8 +148,8 @@ func collectDuplicateRules(rule, other *ExpandedRule) {
 	oservice := other.rule.Service
 	if !other.redundant {
 		oservice.duplicateCount++
+		other.redundant = true
 	}
-	other.redundant = true
 
 	// Link both services, so we later show only one of both service as
 	// redundant.
