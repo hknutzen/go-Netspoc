@@ -369,6 +369,37 @@ func convSomeObjects(x xAny) []someObj {
 	return objects
 }
 
+var attrList []string =
+	[]string{"overlaps", "unknown_owner", "multi_owner", "has_unenforceable"}
+
+func convAttr(m xMap) map[string]string {
+	var result map[string]string
+	for _, s := range attrList {
+		if a, ok := m[s]; ok {
+			if result == nil {
+				result = make(map[string]string)
+			}
+			result[s] = getString(a)
+		}
+	}
+	return result
+}
+
+func convArea(x xAny) *Area {
+	m := getMap(x)
+	if r, ok := m["ref"]; ok {
+		return r.(*Area)
+	}
+	a := new(Area)
+	m["ref"] = a
+	a.Name = getString(m["name"])
+	if xArea, ok := m["in_area"]; ok {
+		a.InArea = convArea(xArea)
+	}
+	a.Attr = convAttr(m)
+	return a
+}
+
 func convZone(x xAny) *Zone {
 	m := getMap(x)
 	if r, ok := m["ref"]; ok {
@@ -385,6 +416,10 @@ func convZone(x xAny) *Zone {
 		}
 		z.Networks = networks
 	}
+	if xArea, ok := m["in_area"]; ok {
+		z.InArea = convArea(xArea)
+	}
+	z.Attr = convAttr(m)
 	return z
 }
 

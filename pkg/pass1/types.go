@@ -19,6 +19,7 @@ type someObj interface {
 	network() *Network
 	up() someObj
 	address(nn natSet) net.IPNet
+	getAttr(attr string) string
 	setCommon(m xMap) // for importFromPerl
 }
 type pathObj interface{}
@@ -127,6 +128,14 @@ type Interface struct {
 type Zone struct {
 	Name     string
 	Networks []*Network
+	Attr     map[string]string
+	InArea   *Area
+}
+
+type Area struct {
+	Name     string
+	Attr     map[string]string
+	InArea   *Area
 }
 
 type modifiers struct {
@@ -160,21 +169,22 @@ type proto struct {
 var prtIP = &proto{name: "ip", proto: "ip"}
 
 type Service struct {
-	name             string
-	disabled         bool
-	ruleCount        int
-	duplicateCount   int
-	redundantCount   int
-	hasSameDupl      map[*Service]bool
-	Overlaps         []*Service
-	overlapsUsed     map[*Service]bool
+	name             	 string
+	disabled         	 bool
+	ruleCount        	 int
+	duplicateCount   	 int
+	redundantCount   	 int
+	hasSameDupl      	 map[*Service]bool
+	Overlaps         	 []*Service
+	overlapsUsed     	 map[*Service]bool
+	overlapsRestricted bool
 }
 
 type UnexpRule struct {
 	Prt           []protoOrName
 	Service       *Service
 }
-	
+
 type Rule struct {
 	Deny          bool
 	Src           []someObj

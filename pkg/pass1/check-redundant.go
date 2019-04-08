@@ -100,6 +100,46 @@ func getOrigPrt(rule *ExpandedRule) *proto {
 	return prt
 }
 
+func getAttrFromArea(attr string, obj *Area) string {
+	if v, ok := obj.Attr[attr]; ok {
+		return v
+	}
+	if a := obj.InArea; a != nil {
+		v := getAttrFromArea(attr, a)
+		if obj.Attr == nil {
+			obj.Attr = make(map[string]string)
+		}
+		obj.Attr[attr] = v
+		return v
+	}
+	return ""
+}
+
+func getAttrFromZone(attr string, obj *Zone) string {
+	if v, ok := obj.Attr[attr]; ok {
+		return v
+	}
+	if a := obj.InArea; a != nil {
+		v := getAttrFromArea(attr, a)
+		if obj.Attr == nil {
+			obj.Attr = make(map[string]string)
+		}
+		obj.Attr[attr] = v
+		return v
+	}
+	return ""
+}
+
+func (obj *Network) getAttr(attr string) string {
+    return getAttrFromZone(attr, obj.zone);
+}
+func (obj *Subnet) getAttr(attr string) string {
+    return getAttrFromZone(attr, obj.Network.zone);
+}
+func (obj *Interface) getAttr(attr string) string {
+    return getAttrFromZone(attr, obj.Network.zone);
+}
+
 /*########################################################################
 # Expand rules and check them for redundancy
 ########################################################################*/
@@ -133,6 +173,39 @@ func setLocalPrtRelation(rules []*Rule) {
 
 var duplicateRules [][2]*ExpandedRule
 
+// Returns true, if overlap should be ignored.
+func checkAttrOverlaps(service, oservice *Service, rule *ExpandedRule) bool {
+	srcAttr := rule.src.getAttr("overlaps")
+	var dstAttr string
+	if srcAttr != "" {
+		dstAttr = rule.dst.getAttr("overlaps")
+	}
+	overlapsUsed := func() bool {
+		for _, overlap := range service.Overlaps {
+			if oservice == overlap {
+				return true
+			}
+		}
+		return false
+	}
+	if overlapsUsed() {
+		service.overlapsUsed[oservice] = true
+		if srcAttr == "restrict" && dstAttr == "restrict" {
+			if !service.overlapsRestricted {
+				service.overlapsRestricted = true
+				warnMsg(fmt.Sprintf("Must not use attribute 'overlaps' at %s",
+					service.name))
+			}
+			return false
+		}
+		return true
+	}
+	if srcAttr == "ok" && dstAttr == "ok" {
+		return true
+	}
+	return false
+}
+
 func collectDuplicateRules(rule, other *ExpandedRule) {
 	service := rule.rule.Service
 
@@ -162,27 +235,19 @@ func collectDuplicateRules(rule, other *ExpandedRule) {
 	}
 	oservice.hasSameDupl[service] = true
 
-	// return early, so overlapsUsed isn't set below.
+	// Return early, so overlapsUsed isn't set below.
 	if rule.overlaps && other.overlaps {
 		return
 	}
-	for _, overlap := range service.Overlaps {
-		if oservice == overlap {
-			service.overlapsUsed[overlap] = true
-			return
-		}
-	}
-	for _, overlap := range oservice.Overlaps {
-		if service == overlap {
-			oservice.overlapsUsed[overlap] = true
-			return
-		}
-	}
-	if config.CheckDuplicateRules == "0" {
+
+	if checkAttrOverlaps(service, oservice, rule) ||
+		checkAttrOverlaps(oservice, service, rule) {
 		return
 	}
 
-	duplicateRules = append(duplicateRules, [2]*ExpandedRule{rule, other})
+	if config.CheckDuplicateRules != "0" {
+		duplicateRules = append(duplicateRules, [2]*ExpandedRule{rule, other})
+	}
 }
 
 type twoNames [2]string
@@ -244,12 +309,8 @@ func collectRedundantRules(rule, other *ExpandedRule, countRef *int) {
 		return
 	}
 
-	oservice := other.rule.Service
-	for _, overlap := range service.Overlaps {
-		if oservice == overlap {
-			service.overlapsUsed[overlap] = true
-			return
-		}
+	if checkAttrOverlaps(service, other.rule.Service, rule) {
+		return
 	}
 
 	redundantRules = append(redundantRules, [2]*ExpandedRule{rule, other})
