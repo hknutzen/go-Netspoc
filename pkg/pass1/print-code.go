@@ -92,30 +92,37 @@ func getNeedProtect(r *Router) []*Interface {
 	return list
 }
 
-var nat2obj2address = make(map[natSet]map[someObj]string)
+type natCache struct {
+	nat natSet
+	cache map[someObj]string
+}
+var nat2Cache = make(map[natSet]*natCache)
 
-func getAddrCache(n natSet) map[someObj]string {
-	cache := nat2obj2address[n]
-	if cache == nil {
-		cache = make(map[someObj]string)
-		nat2obj2address[n] = cache
+func getAddrCache(n natSet) *natCache {
+	if nc, ok := nat2Cache[n]; ok {
+		return nc
 	}
-	return cache
+	nc := natCache{
+		nat: n,
+		cache: make(map[someObj]string),
+	}
+	nat2Cache[n] = &nc
+	return &nc
 }
 
-func getCachedAddr(o someObj, n natSet, c map[someObj]string) string {
-	if a, ok := c[o]; ok {
+func getCachedAddr(o someObj, nc *natCache) string {
+	if a, ok := nc.cache[o]; ok {
 		return a
 	}
-	a := fullPrefixCode(o.address(n))
-	c[o] = a
+	a := fullPrefixCode(o.address(nc.nat))
+	nc.cache[o] = a
 	return a
 }
 
-func getCachedAddrList(l []someObj, n natSet, c map[someObj]string) []string {
+func getCachedAddrList(l []someObj, nc *natCache) []string {
 	result := make([]string, len(l))
 	for i,o := range l {
-		result[i] = getCachedAddr(o, n, c)
+		result[i] = getCachedAddr(o, nc)
 	}
 	return result
 }
@@ -167,7 +174,7 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 				// Remove duplicate addresses from redundancy interfaces.
 				seen := make(map[string]bool)
 				for _, intf := range needProtect {
-					a := getCachedAddr(intf, natSet, addrCache)
+					a := getCachedAddr(intf, addrCache)
 					if seen[a] {
 						continue
 					}
@@ -301,9 +308,8 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 						newRule.OptSecondary = 1
 					}
 
-					newRule.Src = getCachedAddrList(rule.Src, natSet, addrCache)
-					newRule.Dst = getCachedAddrList(
-						rule.Dst, dstNatSet, dstAddrCache)
+					newRule.Src = getCachedAddrList(rule.Src, addrCache)
+					newRule.Dst = getCachedAddrList(rule.Dst, dstAddrCache)
 					prtList := make([]string, len(rule.Prt))
 					for i, p := range rule.Prt {
 						prtList[i] = printPrt(p)
@@ -334,9 +340,9 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 			for n := range optAddr {
 				var a string
 				if dstObj[n] {
-					a = getCachedAddr(n, dstNatSet, dstAddrCache)
+					a = getCachedAddr(n, dstAddrCache)
 				} else {
-					a = getCachedAddr(n, natSet, addrCache)
+					a = getCachedAddr(n, addrCache)
 				}
 				addrList = append(addrList, a)
 			}
@@ -347,9 +353,9 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 			for n := range noOptAddrs {
 				var a string
 				if dstObj[n] {
-					a = getCachedAddr(n, dstNatSet, dstAddrCache)
+					a = getCachedAddr(n, dstAddrCache)
 				} else {
-					a = getCachedAddr(n, natSet, addrCache)
+					a = getCachedAddr(n, addrCache)
 				}
 				addrList = append(addrList, a)
 			}
