@@ -68,6 +68,30 @@ func fullPrefixCode (n net.IPNet) string {
 	return fmt.Sprintf("%s/%d", n.IP.String(), prefix)
 }
 
+// Collect interfaces that need protection by additional deny rules.
+// Add list to each ACL separately, because IP may be changed by NAT.
+func getNeedProtect(r *Router) []*Interface {
+
+	// ASA protects IOS router behind crosslink interface.
+	// Routers connected by crosslink networks are handled like one
+	// large router. Protect the collected interfaces of the whole
+	// cluster at each entry.
+	list := r.crosslinkInterfaces
+	if list != nil {
+		return list
+	}
+	if !r.needProtect {
+		return nil
+	}
+	for _, i := range r.Interfaces {
+		if len(i.IP) == 0 {
+			continue
+		}
+		list = append(list, i)
+	}
+	return list
+}
+
 var nat2obj2address = make(map[natSet]map[someObj]string)
 
 func getAddrCache(n natSet) map[someObj]string {
@@ -105,25 +129,7 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 		model           := router.Model
 		doAuth          := model.DoAuth
 		activeLog       := router.Log
-		var needProtect []*Interface
-
-		// Collect interfaces that need protection by additional deny rules.
-		// Add list to each ACL separately, because IP may be changed by NAT.
-		// ASA protects IOS router behind crosslink interface.
-		if router.needProtect || router.crosslinkInterfaces != nil {
-			// Routers connected by crosslink networks are handled like
-			// one large router. Protect the collected interfaces of
-			// the whole cluster at each entry.
-			needProtect = router.crosslinkInterfaces
-			if needProtect == nil {
-				for _, i := range router.Interfaces {
-					if len(i.IP) == 0 {
-						continue
-					}
-					needProtect = append(needProtect, i)
-				}
-			}
-		}
+		needProtect     := getNeedProtect(router)
 
 		process := func(acl *aclInfo) *jcode.ACLInfo {
 			jACL := new(jcode.ACLInfo)
