@@ -170,16 +170,27 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 				dstNatSet = natSet
 			}
 			dstAddrCache := getAddrCache(dstNatSet)
+
+			// Set attribute NeedProtect in jACL.
+			// Value is list of IP addresses of to be protected interfaces.
+			//
+			// This possibly generates invalid IP address 0.0.0.0/32 for
+			// hidden interface, if some LAN interface is hidden in NAT
+			// set of crypto interface.
+			// But that doesn't matter, because only IOS routers
+			// - need protection of interfaces and
+			// - are also used as crypto device.
+			// But IOS routers have separate crypto-filter-ACL
+			// and therefore these invalid addresses are never used.
 			if needProtect != nil && acl.protectSelf {
-				// Remove duplicate addresses from redundancy interfaces.
+				// For removing duplicate addresses from redundancy interfaces.
 				seen := make(map[string]bool)
 				for _, intf := range needProtect {
 					a := getCachedAddr(intf, addrCache)
-					if seen[a] {
-						continue
+					if !seen[a] {
+						seen[a] = true
+						jACL.NeedProtect = append(jACL.NeedProtect, a)
 					}
-					seen[a] = true
-					jACL.NeedProtect = append(jACL.NeedProtect, a)
 				}
 			}
 
