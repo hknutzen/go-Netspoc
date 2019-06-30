@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"github.com/hknutzen/go-Netspoc/pkg/err"
 	"github.com/hknutzen/go-Netspoc/pkg/jcode"
@@ -27,16 +28,16 @@ func printPrt(prt *proto) string {
 	switch proto {
 	case "tcp", "udp":
 		for _, port := range prt.ports {
-			result += fmt.Sprintf(" %d", port)
+			result += " " + strconv.Itoa(port)
 		}
 		if prt.established {
 			result += " established"
 		}
 	case "icmp", "icmpv6":
 		if t := prt.icmpType; t != -1 {
-			result += fmt.Sprintf(" %d", t)
+			result += " " + strconv.Itoa(t)
 			if c := prt.icmpCode; c != -1 {
-				result += fmt.Sprintf(" %d", c)
+				result += " " + strconv.Itoa(c)
 			}
 		}
 	}
@@ -55,12 +56,13 @@ func prefixCode (n net.IPNet) string {
 	if prefix == size {
 		return n.IP.String()
 	}
-	return fmt.Sprintf("%s/%d", n.IP.String(), prefix)
+	return n.IP.String() + "/" + strconv.Itoa(prefix)
+
 }
 
 func fullPrefixCode (n net.IPNet) string {
 	prefix, _ := n.Mask.Size()
-	return fmt.Sprintf("%s/%d", n.IP.String(), prefix)
+	return n.IP.String() + "/" + strconv.Itoa(prefix)
 }
 
 // Collect interfaces that need protection by additional deny rules.
