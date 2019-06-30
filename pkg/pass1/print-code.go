@@ -35,9 +35,9 @@ func printPrt(prt *proto) string {
 	case "icmp", "icmpv6":
 		if t := prt.icmpType; t != -1 {
 			result += fmt.Sprintf(" %d", t)
-		}
-		if c := prt.icmpCode; c != -1 {
-			result += fmt.Sprintf(" %d", c)
+			if c := prt.icmpCode; c != -1 {
+				result += fmt.Sprintf(" %d", c)
+			}
 		}
 	}
 	// Cache result.
