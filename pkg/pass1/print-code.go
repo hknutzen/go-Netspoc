@@ -7,14 +7,9 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"github.com/hknutzen/go-Netspoc/pkg/err"
 	"github.com/hknutzen/go-Netspoc/pkg/jcode"
 )
-
-func fatalErr(format string, args ...interface{}) {
-	string := "Error: " + fmt.Sprintf(format, args...)
-	fmt.Fprintln(os.Stderr, string)
-	os.Exit(1)
-}
 
 func isDir(path string) bool {
 	stat, err := os.Stat(path)
@@ -426,10 +421,10 @@ func printCode (dir string) {
 		toPass2 = os.Stdout
 	} else {
 		devlist := dir + "/.devlist"
-		var err error
-		toPass2, err = os.Create(devlist)
-		if err != nil {
-			fatalErr("Can't %v", err)
+		var e error
+		toPass2, e = os.Create(devlist)
+		if e != nil {
+			err.Fatal("Can't %v", e)
 		}
 	}
 
@@ -453,9 +448,9 @@ func printCode (dir string) {
 				v6dir := dir + "/ipv6"
 				if !checkedV6dir && !isDir(v6dir) {
 					checkedV6dir = true
-					err := os.Mkdir(v6dir, 0777)
-					if err != nil {
-						fatalErr("Can't %v", err)
+					e := os.Mkdir(v6dir, 0777)
+					if e != nil {
+						err.Fatal("Can't %v", e)
 					}
 				}
 			}
@@ -523,13 +518,13 @@ func printCode (dir string) {
 			// Print ACLs in machine independent format into separate file.
 			// Collect ACLs from VRF parts.
 			aclFile := dir + "/" + path + ".rules"
-			aclFd, err := os.Create(aclFile)
-			if err != nil {
-				fatalErr("Can't %s", err)
+			aclFd, e := os.Create(aclFile)
+			if e != nil {
+				err.Fatal("Can't %v", e)
 			}
 			printAcls(aclFd, vrfMembers)
-			if err := aclFd.Close(); err != nil {
-				fatalErr("Can't close %s: %v", aclFile, err)
+			if e := aclFd.Close(); e != nil {
+				err.Fatal("Can't close %s: %v", aclFile, e)
 			}
 
 			// Send device name to pass 2, showing that processing for this
