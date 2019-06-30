@@ -3,7 +3,7 @@ package main
 /*
 Pass 2 of Netspoc - A Network Security Policy Compiler
 
-(C) 2018 by Heinz Knutzen <heinz.knutzen@googlemail.com>
+(C) 2019 by Heinz Knutzen <heinz.knutzen@googlemail.com>
 
 http://hknutzen.github.com/Netspoc
 
@@ -70,7 +70,7 @@ func createIPObj(ipNetName string) *ipNet {
 
 func getIPObj(ip net.IP, mask net.IPMask, ipNet2obj name2ipNet) *ipNet {
 	prefix, _ := mask.Size()
-	name := fmt.Sprintf("%s/%d", ip.String(), prefix)
+	name := ip.String() + "/" + strconv.Itoa(prefix)
 	obj, ok := ipNet2obj[name]
 	if !ok {
 		obj = &ipNet{IPNet: &net.IPNet{IP: ip, Mask: mask}, name: name}
@@ -623,7 +623,8 @@ func joinRanges(rules ciscoRules, prt2obj name2Proto) ciscoRules {
 			// Process rule with joined port ranges.
 			if ports, ok := rule2range[rule]; ok {
 				protocol := rule.prt.protocol
-				key := fmt.Sprintf("%s %d %d", protocol, ports[0], ports[1])
+				key := protocol + " " +
+					strconv.Itoa(ports[0]) + " " + strconv.Itoa(ports[1])
 
 				// Try to find existing prt with matching range.
 				// This is needed for findObjectgroups to work.
@@ -715,7 +716,7 @@ func moveRulesEspAh(rules ciscoRules, prt2obj name2Proto, hasLog bool) ciscoRule
 }
 
 func createGroup(elements []*ipNet, aclInfo *aclInfo, routerData *routerData) *objGroup {
-	name := fmt.Sprintf("g%d", routerData.objGroupCounter)
+	name := "g" + strconv.Itoa(routerData.objGroupCounter)
 	if routerData.ipv6 {
 		name = "v6" + name
 	}
@@ -1843,7 +1844,7 @@ func findChains(aclInfo *aclInfo, routerData *routerData) {
 	newChain := func(rules linuxRules) *lChain {
 		routerData.chainCounter++
 		chain := &lChain{
-			name:  fmt.Sprintf("c%d", routerData.chainCounter),
+			name:  "c" + strconv.Itoa(routerData.chainCounter),
 			rules: rules,
 		}
 		routerData.chains = append(routerData.chains, chain)
@@ -2156,9 +2157,9 @@ func printChains(fd *os.File, routerData *routerData) {
 
 	// Define chains.
 	for _, chain := range chains {
-		prefix := fmt.Sprintf("-A %s", chain.name)
+		prefix := "-A " + chain.name
 		for _, rule := range chain.rules {
-			result := fmt.Sprintf("%s %s", jumpCode(rule), actionCode(rule))
+			result := jumpCode(rule) + " " + actionCode(rule)
 			if src := rule.src; src != nil {
 				if size, _ := src.Mask.Size(); size != 0 {
 					result += " -s " + prefixCode(&src.ipNet)
@@ -2205,7 +2206,7 @@ func printChains(fd *os.File, routerData *routerData) {
 
 func iptablesACLLine(fd *os.File, rule *linuxRule, prefix string, ipv6 bool) {
 	src, dst, srcRange, prt := rule.src, rule.dst, rule.srcRange, rule.prt
-	result := fmt.Sprintf("%s %s %s", prefix, jumpCode(rule), actionCode(rule))
+	result := prefix + " " + jumpCode(rule) + " " + actionCode(rule)
 	if size, _ := src.Mask.Size(); size != 0 {
 		result += " -s " + prefixCode(&src.ipNet)
 	}
@@ -2221,7 +2222,7 @@ func iptablesACLLine(fd *os.File, rule *linuxRule, prefix string, ipv6 bool) {
 func printIptablesACL(fd *os.File, aclInfo *aclInfo, routerData *routerData) {
 	name := aclInfo.name
 	fmt.Fprintf(fd, ":%s -\n", name)
-	intfPrefix := fmt.Sprintf("-A %s", name)
+	intfPrefix := "-A " + name
 	for _, rule := range aclInfo.lrules {
 		iptablesACLLine(fd, rule, intfPrefix, routerData.ipv6)
 	}
@@ -2606,7 +2607,7 @@ func printCiscoACL(fd *os.File, aclInfo *aclInfo, routerData *routerData) {
 			action := getCiscoAction(rule.deny)
 			protoCode, srcPortCode, dstPortCode :=
 				ciscoPrtCode(rule.srcRange, rule.prt, model, ipv6)
-			result := fmt.Sprintf("%s %s %s", prefix, action, protoCode)
+			result := prefix + " " + action + " " + protoCode
 			result += " " + ciscoACLAddr(rule.src, model)
 			if srcPortCode != "" {
 				result += " " + srcPortCode
@@ -2624,7 +2625,7 @@ func printCiscoACL(fd *os.File, aclInfo *aclInfo, routerData *routerData) {
 
 			// Add line numbers.
 			if model == "NX-OS" {
-				result = fmt.Sprintf(" %d%s", numbered, result)
+				result = " " + strconv.Itoa(numbered) + result
 				numbered += 10
 			}
 			fmt.Fprintln(fd, result)
