@@ -153,13 +153,12 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 			if acl.isCryptoACL {
 				jACL.IsCryptoACL = 1
 			}
-			// Collect networks used in secondary optimization.
-			optAddr := make(map[*Network]bool)
-			// Collect networks forbidden in secondary optimization.
-			noOptAddrs := make(map[someObj]bool)
-			// Collect objects in optAddr and noOptAddrs, that need
-			// dstNatSet for address calculation.
-			dstObj := make(map[someObj]bool)
+			// Collect networks used in secondary optimization and
+			// cache for address calculation.
+			optAddr := make(map[*Network]*natCache)
+			// Collect objects forbidden in secondary optimization and
+			// cache for address calculation.
+			noOptAddrs := make(map[someObj]*natCache)
 			natSet := acl.natSet
 			addrCache := getAddrCache(natSet)
 			dstNatSet := acl.dstNatSet
@@ -227,14 +226,13 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 						standardFilter && rule.somePrimary {
 						for _, isSrc := range []bool{true, false} {
 							var objList []someObj
-							dstNat := false
+							var useCache *natCache
 							if isSrc {
 								objList = rule.Src
+								useCache = addrCache
 							} else {
 								objList = rule.Dst
-								if natSet != dstNatSet {
-									dstNat = true
-								}
+								useCache = dstAddrCache
 							}
 							for _, obj := range objList {
 
@@ -251,7 +249,7 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 								// and outgoing traffic is mixed at
 								// this interface.
 								// At this stage, network with
-								// {hasIdHosts has already been
+								// attribute hasIdHosts has already been
 								// converted to single ID hosts.
 								if doAuth {
 									if o, ok := obj.(*Subnet); ok {
@@ -270,10 +268,7 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 									}
 									if noOpt := router.noSecondaryOpt; noOpt != nil {
 										if noOpt[net] {
-											noOptAddrs[obj] = true
-											if dstNat {
-												dstObj[obj] = true
-											}
+											noOptAddrs[obj] = useCache
 											continue
 										}
 									}
@@ -295,10 +290,7 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 									// this could introduce new missing
 									// supernet rules.
 									if o.hasOtherSubnet {
-										noOptAddrs[obj] = true
-										if dstNat {
-											dstObj[obj] = true
-										}
+										noOptAddrs[obj] = useCache
 										continue
 									}
 									max := o.maxSecondaryNet
@@ -307,10 +299,7 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 									}
 									subst = max
 								}
-								optAddr[subst] = true
-								if dstNat {
-									dstObj[subst] = true
-								}
+								optAddr[subst] = useCache
 							}
 						}
 						newRule.OptSecondary = 1
@@ -344,27 +333,17 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 			//   This is needed because OptSecondary is set for
 			//   grouped rules and we need to control optimization
 			//   for sinlge rules.
-			var addrList []string
-			for n := range optAddr {
-				var a string
-				if dstObj[n] {
-					a = getCachedAddr(n, dstAddrCache)
-				} else {
-					a = getCachedAddr(n, addrCache)
-				}
+			addrList := make([]string, 0, len(optAddr))
+			for n, cache := range optAddr {
+				a := getCachedAddr(n, cache)
 				addrList = append(addrList, a)
 			}
 			sort.Strings(addrList)
 			jACL.OptNetworks = addrList
 
-			addrList = nil
-			for n := range noOptAddrs {
-				var a string
-				if dstObj[n] {
-					a = getCachedAddr(n, dstAddrCache)
-				} else {
-					a = getCachedAddr(n, addrCache)
-				}
+			addrList = make([]string, 0, len(noOptAddrs))
+			for o, cache := range noOptAddrs {
+				a := getCachedAddr(o, cache)
 				addrList = append(addrList, a)
 			}
 			sort.Strings(addrList)
