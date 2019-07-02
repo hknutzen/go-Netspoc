@@ -9,13 +9,9 @@ import (
 	"strconv"
 	"strings"
 	"github.com/hknutzen/go-Netspoc/pkg/err"
+	"github.com/hknutzen/go-Netspoc/pkg/file"
 	"github.com/hknutzen/go-Netspoc/pkg/jcode"
 )
-
-func isDir(path string) bool {
-	stat, err := os.Stat(path)
-	return err == nil && stat.Mode().IsDir()
-}
 
 func printPrt(prt *proto) string {
 	// Use cached result.
@@ -427,7 +423,7 @@ func printCode (dir string) {
 			if router.IPv6 {
 				path = "ipv6/" + path
 				v6dir := dir + "/ipv6"
-				if !checkedV6dir && !isDir(v6dir) {
+				if !checkedV6dir && !file.IsDir(v6dir) {
 					checkedV6dir = true
 					e := os.Mkdir(v6dir, 0777)
 					if e != nil {
