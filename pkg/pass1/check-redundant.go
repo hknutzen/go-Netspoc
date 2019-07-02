@@ -481,7 +481,7 @@ func (tree ruleTree) add(stateless bool) ruleTree5 {
 // Put attributes with small value set first, to get a more
 // memory efficient tree with few branches at root.
 func buildRuleTree(rules []*ExpandedRule) (ruleTree, int) {
-	var count int
+	count := 0
 	ruleTree := make(ruleTree)
 
 	// Simpler version of rule tree. It is used for rules without attributes
@@ -598,7 +598,7 @@ func findRedundantRules(cmpHash, chgHash ruleTree) int {
 
 func CheckRedundantRules() {
 	progress("Checking for redundant rules")
-	var count int
+	count  := 0
 	dcount := 0
 	rcount := 0
 
@@ -606,7 +606,7 @@ func CheckRedundantRules() {
 	// Rules with different src_path / dst_path can't be
 	// redundant to each other.
 	// Keep deterministic order of rules.
-	var index = 0
+	index := 0
 	path2index := make(map[pathObj]int)
 	key2rules := make(map[int][]*Rule)
 	add := func(rules []*Rule) {
@@ -625,7 +625,7 @@ func CheckRedundantRules() {
 
 	for key := 0; key < index; key++ {
 		rules := key2rules[key]
-		var index = 0
+		index := 0
 		path2index := make(map[pathObj]int)
 		key2rules := make(map[int][]*Rule)
 		for _, rule := range rules {
