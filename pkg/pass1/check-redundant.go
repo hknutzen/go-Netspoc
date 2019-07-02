@@ -193,8 +193,7 @@ func checkAttrOverlaps(service, oservice *Service, rule *ExpandedRule) bool {
 		if srcAttr == "restrict" && dstAttr == "restrict" {
 			if !service.overlapsRestricted {
 				service.overlapsRestricted = true
-				warnMsg(fmt.Sprintf("Must not use attribute 'overlaps' at %s",
-					service.name))
+				warnMsg("Must not use attribute 'overlaps' at %s", service.name)
 			}
 			return false
 		}
