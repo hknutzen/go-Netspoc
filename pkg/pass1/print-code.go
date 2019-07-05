@@ -1,8 +1,8 @@
 package pass1;
 
 import (
+	"encoding/json"
 	"fmt"
-	"github.com/json-iterator/go"
 	"net"
 	"os"
 	"sort"
@@ -382,11 +382,12 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 		result.LogDeny = "log"
 	}
 
-	b, err := jsoniter.MarshalIndent(result, "", " ")
+	enc := json.NewEncoder(fh)
+//	enc.SetIndent("", " ")
+	err := enc.Encode(result)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Fprint(fh, string(b))
 }
 
 // Print generated code for each managed router.
