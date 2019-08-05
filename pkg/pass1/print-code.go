@@ -2,8 +2,8 @@ package pass1;
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
-	"github.com/json-iterator/go"
 	"net"
 	"os"
 	"os/exec"
@@ -2290,11 +2290,12 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 		result.LogDeny = "log"
 	}
 
-	b, err := jsoniter.MarshalIndent(result, "", " ")
+	enc := json.NewEncoder(fh)
+//	enc.SetIndent("", " ")
+	err := enc.Encode(result)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Fprint(fh, string(b))
 }
 
 // Make output directory available.
