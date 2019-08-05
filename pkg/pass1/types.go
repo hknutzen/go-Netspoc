@@ -12,6 +12,7 @@ type Config struct {
 	TimeStamps                   bool
 	Pipe                         bool
 	MaxErrors                    int
+	autoDefaultRoute      bool
 }
 
 type someObj interface {
@@ -49,7 +50,10 @@ type Network struct {
 	maxSecondaryNet *Network
 	nat        map[string]*Network
 	dynamic    bool
+	hidden     bool
 	natTag     string
+	certId     string
+	radiusAttributes map[string]string
 }
 
 func (x *Network) network() *Network { return x }
@@ -65,16 +69,26 @@ type Subnet struct {
 	Mask    net.IPMask
 	nat     map[string]net.IP
 	id      string
+	ldapId  string
+	radiusAttributes map[string]string
 }
 
 type Model struct {
 	CommentChar string
 	Class       string
+	crypto      string
 	DoAuth      bool
 	canObjectgroup bool
+	cryptoInContext bool
+	filter      string
 	logModifiers map[string]string
+	needAcl     bool
+	noCryptoFilter bool
+	printInterface bool
+	routing     string
+	stateless   bool
+	usePrefix   bool
 }
-type Hardware struct {}
 
 // Use pointer to map, because we need to test natSet for equality,
 // so we can use it as map key.
@@ -101,11 +115,11 @@ type Router struct {
 	DeviceName string
 	Managed    string
 	AdminIP    []string
-	Model      *Model
+	model      *Model
 	Log        map[string]string
 	logDeny    bool
 	Interfaces []*Interface
-	OrigInterfaces []*Interface
+	origInterfaces []*Interface
 	crosslinkInterfaces []*Interface
 	filterOnly []net.IPNet
 	needProtect bool
@@ -113,16 +127,91 @@ type Router struct {
 	noSecondaryOpt map[*Network]bool
 	Hardware   []*Hardware
 	OrigHardware []*Hardware
+	origRouter *Router
+	radiusAttributes map[string]string
+	routingOnly bool
+	trustPoint string
 	VrfMembers []*Router
-	OrigRouter *Router
 	IPv6       bool
 	aclList    []*aclInfo
+	vrf        string
 }
 
 type Interface struct {
 	NetObj
-	Router  *Router
-	nat     map[string]net.IP
+	Router  		  *Router
+	crypto        *Crypto
+	hub           []*Crypto
+	spoke         *Crypto
+	id            string
+	isHub         bool
+	hardware      *Hardware
+	mainInterface *Interface
+	nat     		  map[string]net.IP
+	natSet        natSet
+	peer    		  *Interface
+	peerNetworks  []*Network
+	realInterface *Interface
+	redundancyInterfaces []*Interface
+	redundant     bool
+	routes        map[*Interface]map[*Network]bool
+	routing       *Routing
+	rules         []*Rule
+	intfRules     []*Rule
+	outRules      []*Rule
+	idRules       map[string]*idInterface
+	short         bool
+	zone          *Zone
+}
+type idInterface struct {
+	*Interface
+	src *Subnet
+}
+
+type Routing struct {
+	name   string
+	prt    *proto
+	mcast  []net.IP
+	mcast6 []net.IP
+}
+
+type Hardware struct {
+	interfaces  []*Interface
+	loopback    bool
+	name        string
+	natSet      natSet
+	dstNatSet   natSet
+	needOutAcl  bool
+	noInAcl     bool
+	rules       []*Rule
+	intfRules   []*Rule
+	outRules    []*Rule
+	ioRules     map[string][]*Rule
+	subcmd      []string
+}
+
+type Crypto struct {
+	ipsec *Ipsec
+	detailedCryptoAcl bool
+}
+type Ipsec struct {
+	name     	  		string
+	isakmp   	  		*Isakmp
+	lifetime 	  		*[2]int
+	ah       	  		string
+	espAuthentication string
+	espEncryption 		string
+	pfsGroup      		string
+}
+type Isakmp struct {
+	name           string
+	authentication string
+	encryption     string
+	group          string
+	hash           string
+	trustPoint     string
+	ikeVersion     int
+	lifetime       int
 }
 
 type Zone struct {
@@ -130,6 +219,8 @@ type Zone struct {
 	Networks []*Network
 	Attr     map[string]string
 	InArea   *Area
+	interfaces []*Interface
+	zoneCluster []*Zone
 }
 
 type Area struct {

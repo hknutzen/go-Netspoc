@@ -52,6 +52,17 @@ func getIP(x xAny) net.IP {
 	s := getString(x)
 	return net.IP(s)
 }
+func getIPs(x xAny) []net.IP {
+	if x == nil {
+		return nil
+	}
+	a := getSlice(x)
+	result := make([]net.IP, len(a))
+	for i, elt := range a {
+		result[i] = getIP(elt)
+	}
+	return result
+}
 
 func getString(x xAny) string {
 	switch a := x.(type) {
@@ -80,11 +91,11 @@ func getStrings(x xAny) []string {
 }
 func getMapStringString(x xAny) map[string]string {
 	m := getMap(x)
-	ss := make(map[string]string)
+	n := make(map[string]string)
 	for k, v := range m {
-		ss[k] = getString(v)
+		n[getString(k)] = getString(v)
 	}
-	return ss
+	return n
 }
 
 func getSlice(x xAny) xSlice {
@@ -183,8 +194,22 @@ func convNetwork(x xAny) *Network {
 	n.maxSecondaryNet = convNetwork(m["max_secondary_net"])
 	n.nat = convNetNat(m["nat"])
 	n.dynamic = getBool(m["dynamic"])
+	n.hidden = getBool(m["hidden"])
 	n.natTag = getString(m["nat_tag"])
+	n.certId = getString(m["cert_id"])
+	n.radiusAttributes = convRadiusAttributes(m["radius_attributes"])
 	return n
+}
+func convNetworks(x xAny) []*Network {
+	if x == nil {
+		return nil
+	}
+	a := getSlice(x)
+	networks := make([]*Network, len(a))
+	for i, x := range a {
+		networks[i] = convNetwork(x)
+	}
+	return networks
 }
 
 func convSubnet(x xAny) *Subnet {
@@ -198,6 +223,8 @@ func convSubnet(x xAny) *Subnet {
 	s.Mask = m["mask"].([]byte)
 	s.nat = convIPNat(m["nat"])
 	s.id = getString(m["id"])
+	s.ldapId = getString(m["ldap_id"])
+	s.radiusAttributes = convRadiusAttributes(m["radius_attributes"])
 	return s
 }
 
@@ -229,36 +256,16 @@ func convModel(x xAny) *Model {
 	d.DoAuth = getBool(m["do_auth"])
 	d.canObjectgroup = getBool(m["can_objectgroup"])
 	d.logModifiers = getMapStringString(m["log_modifiers"])
+	d.crypto = getString(m["crypto"])
+	d.cryptoInContext = getBool(m["crypto_in_context"])
+	d.filter = getString(m["filter"])
+	d.needAcl = getBool(m["need_acl"])
+	d.noCryptoFilter = getBool(m["no_crypto_filter"])
+	d.printInterface = getBool(m["print_interface"])
+	d.routing = getString(m["routing"])
+	d.stateless = getBool(m["stateless"])
+	d.usePrefix = getBool(m["use_prefix"])
 	return d
-}
-
-func convAclInfo(x xAny) *aclInfo {
-	m := getMap(x)
-	i := new(aclInfo)
-	i.name = getString(m["name"])
-	i.natSet = convNatSet(m["nat_set"])
-	i.dstNatSet = convNatSet(m["dst_nat_set"])
-	i.rules = convRules(m["rules"])
-	i.intfRules = convRules(m["intf_rules"])
-	i.protectSelf = getBool(m["protect_self"])
-	i.addPermit = getBool(m["add_permit"])
-	i.addDeny = getBool(m["add_deny"])
-	i.filterAnySrc = getBool(m["filter_any_src"])
-	i.isCryptoACL = getBool(m["is_crypto_acl"])
-	i.isStdACL = getBool(m["is_std_acl"])
-	i.subAclList = convAclInfos(m["sub_acl_list"])
-	return i
-}
-func convAclInfos(x xAny) []*aclInfo {
-	if x == nil {
-		return nil
-	}
-	a := getSlice(x)
-	aclList := make([]*aclInfo, len(a))
-	for i, x := range a {
-		aclList[i] = convAclInfo(x)
-	}
-	return aclList
 }
 
 func convRouter(x xAny) *Router {
@@ -274,12 +281,13 @@ func convRouter(x xAny) *Router {
 	r.Name = getString(m["name"])
 	r.DeviceName = getString(m["device_name"])
 	r.Managed = getString(m["managed"])
+	r.routingOnly = getBool(m["routing_only"])
 	r.AdminIP = getStrings(m["admin_ip"])
-	r.Model   = convModel(m["model"])
+	r.model   = convModel(m["model"])
 	r.Log     = getMapStringString(m["log"])
 	r.logDeny = getBool(m["log_deny"])
 	r.Interfaces = convInterfaces(m["interfaces"])
-	r.OrigInterfaces = convInterfaces(m["orig_interfaces"])
+	r.origInterfaces = convInterfaces(m["orig_interfaces"])
 	r.crosslinkInterfaces = convInterfaces(m["crosslink_interfaces"])
 	if x, ok := m["filter_only"]; ok {
 		a := getSlice(x)
@@ -302,12 +310,14 @@ func convRouter(x xAny) *Router {
 		}
 		r.noSecondaryOpt = n
 	}
-	// Hardware
-	// OrigHardware
+	r.Hardware = convHardwareList(m["hardware"])
+	r.OrigHardware = convHardwareList(m["orig_hardware"])
 	r.VrfMembers = convRouters(m["vrf_members"])
-	r.OrigRouter = convRouter(m["orig_router"])
+	r.origRouter = convRouter(m["orig_router"])
+	r.radiusAttributes = convRadiusAttributes(m["radius_attributes"])
+	r.trustPoint = getString(m["trust_point"])
 	r.IPv6 = getBool(m["ipv6"])
-	r.aclList = convAclInfos(m["acl_list"])
+	r.vrf = getString(m["vrf"])
 	return r
 }
 func convRouters(x xAny) []*Router {
@@ -323,6 +333,9 @@ func convRouters(x xAny) []*Router {
 }
 
 func convInterface(x xAny) *Interface {
+	if x == nil {
+		return nil
+	}
 	m := getMap(x)
 	if i, ok := m["ref"]; ok {
 		return i.(*Interface)
@@ -331,7 +344,54 @@ func convInterface(x xAny) *Interface {
 	m["ref"] = i
 	i.setCommon(m)
 	i.Router = convRouter(m["router"])
+	i.crypto = convCrypto(m["crypto"])
+	i.hub = convCryptoList(m["hub"])
+	i.spoke = convCrypto(m["spoke"])
+	i.id = getString(m["id"])
+	i.isHub = getBool(m["is_hub"])
+	if i.Router != nil && (i.Router.Managed != "" || i.Router.routingOnly) {
+		i.hardware = convHardware(m["hardware"])
+	}
+	i.mainInterface = convInterface(m["main_interface"])
 	i.nat = convIPNat(m["nat"])
+	i.natSet = convNatSet(m["nat_set"])
+	i.peer = convInterface(m["peer"])
+	i.peerNetworks = convNetworks(m["peer_networks"])
+	i.realInterface = convInterface(m["real_interface"])
+	i.redundancyInterfaces = convInterfaces(m["redundancy_interfaces"])
+	i.redundant = getBool(m["redundant"])
+	if x, ok := m["routes"]; ok {
+		m1 := getMap(x)
+		n1 := make(map[*Interface]map[*Network]bool)
+		m2 := getMap(m["hopref2obj"])
+		n2 := make(map[string]*Interface)
+		for ref, intf := range m2 {
+			n2[getString(ref)] = convInterface(intf)
+		}
+		for ref, netMap := range m1 {
+			m := getMap(netMap)
+			n := make(map[*Network]bool)
+			for _, x := range m {
+				n[convNetwork(x)] = true
+			}
+			n1[n2[getString(ref)]] = n
+		}
+		i.routes = n1
+	}
+	i.routing = convRouting(m["routing"])
+	i.rules = convRules(m["rules"])
+	i.intfRules = convRules(m["intf_rules"])
+	i.outRules = convRules(m["out_rules"])
+	if x, ok := m["id_rules"]; ok {
+		m := getMap(x)
+		n := make(map[string]*idInterface)
+		for id, idIntf := range m {
+			n[getString(id)] = convIdInterface(idIntf)
+		}
+		i.idRules = n
+	}
+	i.short = getBool(m["short"])
+	i.zone = convZone(m["zone"])
 	return i
 }
 func convInterfaces(x xAny) []*Interface {
@@ -344,6 +404,68 @@ func convInterfaces(x xAny) []*Interface {
 		interfaces[i] = convInterface(x)
 	}
 	return interfaces
+}
+
+func convIdInterface(x xAny) *idInterface {
+	m := getMap(x)
+	z := new(idInterface)
+	z.src = convSubnet(m["src"])
+	z.Interface = convInterface(x)
+	return z
+}
+
+func convRouting(x xAny) *Routing {
+	if x == nil {
+		return nil
+	}
+	m := getMap(x)
+	if i, ok := m["ref"]; ok {
+		return i.(*Routing)
+	}
+	r := new(Routing)
+	m["ref"] = r
+	r.name = getString(m["name"])
+	r.prt = convProto(m["prt"])
+	r.mcast = getIPs(m["mcast"])
+	r.mcast6 = getIPs(m["mcast6"])
+	return r
+}
+
+func convHardware(x xAny) *Hardware {
+	m := getMap(x)
+	if i, ok := m["ref"]; ok {
+		return i.(*Hardware)
+	}
+	h := new(Hardware)
+	m["ref"] = h
+	h.interfaces = convInterfaces(m["interfaces"])
+	h.loopback = getBool(m["loopback"])
+	h.name = getString(m["name"])
+	h.natSet = convNatSet(m["nat_set"])
+	h.dstNatSet = convNatSet(m["dst_nat_set"])
+	h.needOutAcl = getBool(m["need_out_acl"])
+	h.noInAcl = getBool(m["no_in_acl"])
+	h.rules = convRules(m["rules"])
+	h.intfRules = convRules(m["intf_rules"])
+	h.outRules = convRules(m["out_rules"])
+	if x, ok := m["io_rules"]; ok {
+		m := getMap(x)
+		n := make(map[string][]*Rule)
+		for out, rules := range m {
+			n[getString(out)] = convRules(rules)
+		}
+		h.ioRules = n
+	}
+	h.subcmd = getStrings(m["subcmd"])
+	return h
+}
+func convHardwareList(x xAny) []*Hardware {
+	a := getSlice(x)
+	l := make([]*Hardware, len(a))
+	for i, x := range a {
+		l[i] = convHardware(x)
+	}
+	return l
 }
 
 func convSomeObj(x xAny) someObj {
@@ -359,8 +481,10 @@ func convSomeObj(x xAny) someObj {
 	}
 	return convNetwork(x)
 }
-
 func convSomeObjects(x xAny) []someObj {
+	if x == nil {
+		return nil
+	}
 	a := getSlice(x)
 	objects := make([]someObj, len(a))
 	for i, x := range a {
@@ -386,6 +510,9 @@ func convAttr(m xMap) map[string]string {
 }
 
 func convArea(x xAny) *Area {
+	if x == nil {
+		return nil
+	}
 	m := getMap(x)
 	if r, ok := m["ref"]; ok {
 		return r.(*Area)
@@ -393,14 +520,15 @@ func convArea(x xAny) *Area {
 	a := new(Area)
 	m["ref"] = a
 	a.Name = getString(m["name"])
-	if xArea, ok := m["in_area"]; ok {
-		a.InArea = convArea(xArea)
-	}
+	a.InArea = convArea(m["in_area"])
 	a.Attr = convAttr(m)
 	return a
 }
 
 func convZone(x xAny) *Zone {
+	if x == nil {
+		return nil
+	}
 	m := getMap(x)
 	if r, ok := m["ref"]; ok {
 		return r.(*Zone)
@@ -408,19 +536,23 @@ func convZone(x xAny) *Zone {
 	z := new(Zone)
 	m["ref"] = z
 	z.Name = getString(m["name"])
-	if list, ok := m["networks"]; ok {
-		xNetworks := list.(xSlice)
-		networks := make([]*Network, len(xNetworks))
-		for i, xNetwork := range xNetworks {
-			networks[i] = convNetwork(xNetwork)
-		}
-		z.Networks = networks
-	}
-	if xArea, ok := m["in_area"]; ok {
-		z.InArea = convArea(xArea)
-	}
+	z.Networks = convNetworks(m["networks"])
 	z.Attr = convAttr(m)
+	z.InArea = convArea(m["in_area"])
+	z.interfaces = convInterfaces(m["interfaces"])
+	z.zoneCluster = convZones(m["zone_cluster"])
 	return z
+}
+func convZones(x xAny) []*Zone {
+	if x == nil {
+		return nil
+	}
+	a := getSlice(x)
+	l := make([]*Zone, len(a))
+	for i, x := range a {
+		l[i] = convZone(x)
+	}
+	return l
 }
 
 func convPathObj(x xAny) pathObj {
@@ -546,6 +678,33 @@ func convProtoOrNames (x xAny) []protoOrName {
 	return list
 }
 
+func convProtoGroup(x xAny) *ProtoGroup {
+	if x == nil {
+		return nil
+	}
+	m := getMap(x)
+	if o, ok := m["ref"]; ok {
+		return o.(*ProtoGroup)
+	}
+	p := new(ProtoGroup)
+	m["ref"] = p
+	p.isUsed = getBool(m["is_used"])
+	if p.isUsed {
+		p.elements = convProtos(m["elements"])
+	} else {
+		p.pairs = convProtoOrNames(m["pairs"])
+	}
+	return p
+}
+func convProtoGroupMap(x xAny) map[string]*ProtoGroup {
+	m := getMap(x)
+	n := make(map[string]*ProtoGroup)
+	for name, xGroup := range m {
+		n[name] = convProtoGroup(xGroup)
+	}
+	return n
+}
+
 func convService(x xAny) *Service {
 	m := getMap(x)
 	if s, ok := m["ref"]; ok {
@@ -627,14 +786,91 @@ func convRules(x xAny) []*Rule {
 
 func convPathRules(x xAny) *PathRules {
 	m := getMap(x)
-	rules := new(PathRules)
-	if v := m["permit"]; v != nil {
-		rules.Permit = convRules(v)
+	r := new(PathRules)
+	r.Permit = convRules(m["permit"])
+	r.Deny = convRules(m["deny"])
+	return r
+}
+
+func convRadiusAttributes(x xAny) map[string]string {
+	if x == nil {
+		return nil
 	}
-	if v := m["deny"]; v != nil {
-		rules.Deny = convRules(v)
+	m := getMap(x)
+	if r, ok := m["ref"]; ok {
+		return r.(map[string]string)
 	}
-	return rules
+	return getMapStringString(x)
+}
+
+func convCrypto(x xAny) *Crypto {
+	if x == nil {
+		return nil
+	}
+	m := getMap(x)
+	if o, ok := m["ref"]; ok {
+		return o.(*Crypto)
+	}
+	c := new(Crypto)
+	m["ref"] = c
+	c.ipsec = convIpsec(m["type"])
+	c.detailedCryptoAcl = getBool(m["detailed_crypto_acl"])
+	return c
+}
+func convCryptoList(x xAny) []*Crypto {
+	if x == nil {
+		return nil
+	}
+	a := getSlice(x)
+	b := make([]*Crypto, len(a))
+	for i, x := range a {
+		b[i] = convCrypto(x)
+	}
+	return b
+}
+
+func convIpsec(x xAny) *Ipsec {
+	m := getMap(x)
+	if o, ok := m["ref"]; ok {
+		return o.(*Ipsec)
+	}
+	c := new(Ipsec)
+	m["ref"] = c
+	c.name = getString(m["name"])
+	c.isakmp = convIsakmp(m["key_exchange"])
+	if list, ok := m["lifetime"]; ok {
+		tryInt := func(x xAny) int {
+			if x == nil {
+				return -1
+			}
+			return getInt(x)
+		}
+		a := getSlice(list)
+		c.lifetime = &[2]int{tryInt(a[0]), tryInt(a[1])}
+	}
+	c.ah = getString(m["ah"])
+	c.espAuthentication = getString(m["esp_authentication"])
+	c.espEncryption = getString(m["esp_encryption"])
+	c.pfsGroup = getString(m["pfs_group"])
+	return c
+}
+
+func convIsakmp(x xAny) *Isakmp {
+	m := getMap(x)
+	if o, ok := m["ref"]; ok {
+		return o.(*Isakmp)
+	}
+	c := new(Isakmp)
+	m["ref"] = c
+	c.name = getString(m["name"])
+	c.authentication = getString(m["authentication"])
+	c.encryption = getString(m["encryption"])
+	c.group = getString(m["group"])
+	c.hash = getString(m["hash"])
+	c.trustPoint = getString(m["trust_point"])
+	c.ikeVersion = getInt(m["ike_version"])
+	c.lifetime = getInt(m["lifetime"])
+	return c
 }
 
 func convConfig(x xAny) Config {
@@ -647,6 +883,7 @@ func convConfig(x xAny) Config {
 		CheckDuplicateRules: getString(m["check_duplicate_rules"]),
 		CheckRedundantRules: getString(m["check_redundant_rules"]),
 		CheckFullyRedundantRules: getString(m["check_fully_redundant_rules"]),
+		autoDefaultRoute: getBool(m["auto_default_route"]),
 	}
 	return c
 }
@@ -670,9 +907,17 @@ func ImportFromPerl () {
 	}
 	config = convConfig(m["config"])
 	startTime = time.Unix(int64(m["start_time"].(int)), 0)
+	program = getString(m["program"])
 	progress("Importing from Perl")
 	prtIP = convProto(m["prt_ip"])
+	network00 = convNetwork(m["network_00"])
+	network00v6 = convNetwork(m["network_00_v6"])
+	permitAnyRule = convRule(m["permit_any_rule"])
+	permitAny6Rule = convRule(m["permit_any6_rule"])
+	denyAnyRule = convRule(m["deny_any_rule"])
+	denyAny6Rule = convRule(m["deny_any6_rule"])
 	protocols = convProtoMap(m["protocols"])
+	protocolgroups = convProtoGroupMap(m["protocolgroups"])
 	services = convServiceMap(m["services"])
 	pathRules = convPathRules(m["path_rules"])
 	managedRouters = convRouters(m["managed_routers"])

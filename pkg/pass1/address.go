@@ -4,6 +4,24 @@ import (
 	"net"
 )
 
+func getHostMask(ip net.IP) net.IPMask {
+	if len(ip) == 4 {
+		return net.CIDRMask(32, 32)
+	}
+	return net.CIDRMask(128, 128)
+}
+
+var zeroIP = net.ParseIP("0.0.0.0")
+var zeroIPv6 = net.ParseIP("::")
+
+func getZeroIp(ipv6 bool) net.IP {
+	if ipv6 {
+		return zeroIPv6
+	} else {
+		return zeroIP
+	}
+}
+
 func getNatNetwork(network *Network, natSet natSet) *Network {
 	for tag, natNet := range network.nat {
 		if (*natSet)[tag] {
@@ -11,13 +29,6 @@ func getNatNetwork(network *Network, natSet natSet) *Network {
 		}
 	}
 	return network
-}
-
-func getHostMask(ip net.IP) net.IPMask {
-	if len(ip) == 4 {
-		return net.CIDRMask(32, 32)
-	}
-	return net.CIDRMask(128, 128)
 }
 
 func (obj *Network) address (nn natSet) net.IPNet {
@@ -42,14 +53,14 @@ func natAddress (ip net.IP, mask net.IPMask, nat map[string]net.IP, network *Net
 	if network.dynamic {
 		natTag := network.natTag
 		if ip, ok := nat[natTag]; ok {
-				
+
 			// Single static NAT IP for this interface.
 			return net.IPNet{IP: ip, Mask: getHostMask(ip) }
 		} else {
 			return net.IPNet{IP: network.IP, Mask: network.Mask}
 		}
 	}
-		
+
 	// Take higher bits from network NAT, lower bits from original IP.
 	// This works with and without NAT.
 	n := len(network.IP)
