@@ -30,6 +30,7 @@ type IPObj struct {
 	IP   net.IP
 	unnumbered bool
 	negotiated bool
+	short bool
 	tunnel bool
 	bridged bool
 	Up   someObj
@@ -160,7 +161,6 @@ type Interface struct {
 	intfRules     []*Rule
 	outRules      []*Rule
 	idRules       map[string]*idInterface
-	short         bool
 	zone          *Zone
 }
 type idInterface struct {

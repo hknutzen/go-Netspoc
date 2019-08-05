@@ -132,6 +132,8 @@ func (x *IPObj) setCommon(m xMap) {
 		x.unnumbered = true
 	case "negotiated":
 		x.negotiated = true
+	case "short":
+		x.short = true
 	case "tunnel":
 		x.tunnel = true
 	case "bridged":
