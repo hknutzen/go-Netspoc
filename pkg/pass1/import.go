@@ -392,7 +392,6 @@ func convInterface(x xAny) *Interface {
 		}
 		i.idRules = n
 	}
-	i.short = getBool(m["short"])
 	i.zone = convZone(m["zone"])
 	return i
 }
