@@ -908,8 +908,9 @@ func ImportFromPerl () {
 	}
 	config = convConfig(m["config"])
 	startTime = time.Unix(int64(m["start_time"].(int)), 0)
-	program = getString(m["program"])
 	progress("Importing from Perl")
+
+	program = getString(m["program"])
 	prtIP = convProto(m["prt_ip"])
 	network00 = convNetwork(m["network_00"])
 	network00v6 = convNetwork(m["network_00_v6"])
