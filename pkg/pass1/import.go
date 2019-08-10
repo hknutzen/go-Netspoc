@@ -427,9 +427,15 @@ func convRouting(x xAny) *Routing {
 	m["ref"] = r
 	r.name = getString(m["name"])
 	r.prt = convProto(m["prt"])
-	r.mcast = getIPs(m["mcast"])
-	r.mcast6 = getIPs(m["mcast6"])
+	r.mcast = convMcastInfo(m)
 	return r
+}
+
+func convMcastInfo(m xMap) mcastInfo {
+	var i mcastInfo
+	i.v4 = getStrings(m["mcast"])
+	i.v6 = getStrings(m["mcast6"])
+	return i
 }
 
 func convHardware(x xAny) *Hardware {
@@ -451,7 +457,7 @@ func convHardware(x xAny) *Hardware {
 	h.outRules = convRules(m["out_rules"])
 	if x, ok := m["io_rules"]; ok {
 		m := getMap(x)
-		n := make(map[string][]*Rule)
+		n := make(map[string]RuleList)
 		for out, rules := range m {
 			n[getString(out)] = convRules(rules)
 		}
@@ -856,6 +862,22 @@ func convIpsec(x xAny) *Ipsec {
 	return c
 }
 
+func convXxrp(x xAny) *Xxrp {
+	m := getMap(x)
+	i := new(Xxrp)
+	i.prt = convProto(m["prt"])
+	i.mcast = convMcastInfo(m)
+	return i
+}
+func convXxrpInfo(x xAny) map[string]*Xxrp {
+	m := getMap(x)
+	n := make(map[string]*Xxrp)
+	for k, v := range m {
+		n[getString(k)] = convXxrp(v)
+	}
+	return n
+}
+
 func convIsakmp(x xAny) *Isakmp {
 	m := getMap(x)
 	if o, ok := m["ref"]; ok {
@@ -910,19 +932,22 @@ func ImportFromPerl () {
 	startTime = time.Unix(int64(m["start_time"].(int)), 0)
 	progress("Importing from Perl")
 
-	program = getString(m["program"])
-	prtIP = convProto(m["prt_ip"])
+	denyAny6Rule = convRule(m["deny_any6_rule"])
+	denyAnyRule = convRule(m["deny_any_rule"])
+	managedRouters = convRouters(m["managed_routers"])
 	network00 = convNetwork(m["network_00"])
 	network00v6 = convNetwork(m["network_00_v6"])
-	permitAnyRule = convRule(m["permit_any_rule"])
-	permitAny6Rule = convRule(m["permit_any6_rule"])
-	denyAnyRule = convRule(m["deny_any_rule"])
-	denyAny6Rule = convRule(m["deny_any6_rule"])
-	protocols = convProtoMap(m["protocols"])
-	protocolgroups = convProtoGroupMap(m["protocolgroups"])
-	services = convServiceMap(m["services"])
-	pathRules = convPathRules(m["path_rules"])
-	managedRouters = convRouters(m["managed_routers"])
-	routingOnlyRouters = convRouters(m["routing_only_routers"])
 	outDir = getString(m["out_dir"])
+	pathRules = convPathRules(m["path_rules"])
+	permitAny6Rule = convRule(m["permit_any6_rule"])
+	permitAnyRule = convRule(m["permit_any_rule"])
+	program = getString(m["program"])
+	protocolgroups = convProtoGroupMap(m["protocolgroups"])
+	protocols = convProtoMap(m["protocols"])
+	prtBootpc = convProto(m["prt_bootpc"])
+	prtBootps = convProto(m["prt_bootps"])
+	prtIP = convProto(m["prt_ip"])
+	routingOnlyRouters = convRouters(m["routing_only_routers"])
+	services = convServiceMap(m["services"])
+	xxrpInfo = convXxrpInfo(m["xxrp_info"])
 }

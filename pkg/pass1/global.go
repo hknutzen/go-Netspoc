@@ -11,6 +11,11 @@ var config Config
 var startTime time.Time
 var ErrorCounter int
 
+var prtIP *proto
+var prtBootps *proto
+var prtBootpc *proto
+var xxrpInfo map[string]*Xxrp
+
 var protocols map[string]*proto
 var protocolgroups map[string]*ProtoGroup
 

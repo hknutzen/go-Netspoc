@@ -54,6 +54,8 @@ type Network struct {
 	hidden     bool
 	natTag     string
 	certId     string
+	filterAt   map[int]bool
+	hasIdHosts bool
 	radiusAttributes map[string]string
 }
 
@@ -84,10 +86,13 @@ type Model struct {
 	filter      string
 	logModifiers map[string]string
 	needAcl     bool
+	hasIoAcl    bool
 	noCryptoFilter bool
 	printInterface bool
 	routing     string
 	stateless   bool
+	statelessSelf bool
+	statelessIcmp bool
 	usePrefix   bool
 }
 
@@ -99,8 +104,8 @@ type aclInfo struct {
 	name string
 	natSet natSet
 	dstNatSet natSet
-	rules []*Rule
-	intfRules []*Rule
+	rules RuleList
+	intfRules RuleList
 	protectSelf bool
 	addPermit bool
 	addDeny bool
@@ -119,10 +124,12 @@ type Router struct {
 	model      *Model
 	Log        map[string]string
 	logDeny    bool
+	localMark  int
 	Interfaces []*Interface
 	origInterfaces []*Interface
 	crosslinkInterfaces []*Interface
 	filterOnly []net.IPNet
+	generalPermit []*proto
 	needProtect bool
 	noGroupCode bool
 	noSecondaryOpt map[*Network]bool
@@ -142,11 +149,14 @@ type Interface struct {
 	NetObj
 	Router  		  *Router
 	crypto        *Crypto
+	dhcpClient    bool
+	dhcpServer    bool
 	hub           []*Crypto
 	spoke         *Crypto
 	id            string
 	isHub         bool
 	hardware      *Hardware
+	loopback      bool
 	mainInterface *Interface
 	nat     		  map[string]net.IP
 	natSet        natSet
@@ -154,12 +164,14 @@ type Interface struct {
 	peerNetworks  []*Network
 	realInterface *Interface
 	redundancyInterfaces []*Interface
+	redundancyType string
 	redundant     bool
+	reroutePermit []someObj
 	routes        map[*Interface]map[*Network]bool
 	routing       *Routing
-	rules         []*Rule
-	intfRules     []*Rule
-	outRules      []*Rule
+	rules         RuleList
+	intfRules     RuleList
+	outRules      RuleList
 	idRules       map[string]*idInterface
 	zone          *Zone
 }
@@ -171,22 +183,27 @@ type idInterface struct {
 type Routing struct {
 	name   string
 	prt    *proto
-	mcast  []net.IP
-	mcast6 []net.IP
+	mcast  mcastInfo
+}
+
+type Xxrp struct {
+	prt *proto
+	mcast mcastInfo
 }
 
 type Hardware struct {
 	interfaces  []*Interface
+	crosslink   bool
 	loopback    bool
 	name        string
 	natSet      natSet
 	dstNatSet   natSet
 	needOutAcl  bool
 	noInAcl     bool
-	rules       []*Rule
-	intfRules   []*Rule
-	outRules    []*Rule
-	ioRules     map[string][]*Rule
+	rules       RuleList
+	intfRules   RuleList
+	outRules    RuleList
+	ioRules     map[string]RuleList
 	subcmd      []string
 }
 
@@ -257,8 +274,6 @@ type proto struct {
 	printed string
 }
 
-var prtIP = &proto{name: "ip", proto: "ip"}
-
 type Service struct {
 	name             	 string
 	disabled         	 bool
@@ -280,7 +295,7 @@ type Rule struct {
 	Deny          bool
 	Src           []someObj
 	Dst           []someObj
-	Prt           []*proto
+	Prt           ProtoList
 	SrcRange      *proto
 	Log           string
 	Rule          *UnexpRule
@@ -292,10 +307,11 @@ type Rule struct {
 	someNonSecondary bool
 	somePrimary   bool
 }
+type RuleList []*Rule
 
 type PathRules struct {
-	Permit []*Rule
-	Deny   []*Rule
+	Permit RuleList
+	Deny   RuleList
 }
 
 type protoOrName interface{}
@@ -303,7 +319,12 @@ type ProtoList []*proto
 
 type ProtoGroup struct {
 	pairs []protoOrName
-	elements []*proto
+	elements ProtoList
 	recursive bool
 	isUsed bool
+}
+
+type mcastInfo struct {
+	v4 []string
+	v6 []string
 }
