@@ -21,21 +21,21 @@ type ExpandedRule struct {
 
 func fillExpandedRule(rule *Rule) *ExpandedRule {
 	return &ExpandedRule{
-		deny:      rule.Deny,
-		stateless: rule.Stateless,
-		log:       rule.Log,
-		srcRange:  rule.SrcRange,
-		rule:      rule.Rule,
-		overlaps:  rule.Overlaps,
+		deny:      rule.deny,
+		stateless: rule.stateless,
+		log:       rule.log,
+		srcRange:  rule.srcRange,
+		rule:      rule.rule,
+		overlaps:  rule.overlaps,
 	}
 }
 
-func (r *Rule) print() {
+func (r *Rule) print() string {
 	e := fillExpandedRule(r)
-	e.src = r.Src[0]
-	e.dst = r.Dst[0]
-	e.prt = r.Prt[0]
-	e.print()
+	e.src = r.src[0]
+	e.dst = r.dst[0]
+	e.prt = r.prt[0]
+	return e.print()
 }
 
 func (r *ExpandedRule) print() string {
@@ -46,8 +46,8 @@ func (r *ExpandedRule) print() string {
 	if r.stateless {
 		extra += " stateless"
 	}
-	if r.rule.Service != nil {
-		extra += " of " + r.rule.Service.name
+	if r.rule.service != nil {
+		extra += " of " + r.rule.service.name
 	}
 	var action string
 	if r.deny {
@@ -57,7 +57,7 @@ func (r *ExpandedRule) print() string {
 	}
 	origPrt := getOrigPrt(r)
 	return fmt.Sprintf("%s src=%s; dst=%s; prt=%s;%s",
-		action, r.src.name(), r.dst.name(), origPrt.name, extra)
+		action, r.src.getName(), r.dst.getName(), origPrt.name, extra)
 }
 
 func isSubRange(p *proto, o *proto) bool {
@@ -70,8 +70,8 @@ func getOrigPrt(rule *ExpandedRule) *proto {
 	prt := rule.prt
 	proto := prt.proto
 	oRule := rule.rule
-	service := oRule.Service
-	list := expandProtocols(oRule.Prt, service.name)
+	service := oRule.service
+	list := expandProtocols(oRule.prt, service.name)
 	for _, oPrt := range list {
 		if proto != oPrt.proto {
 			continue
@@ -101,30 +101,30 @@ func getOrigPrt(rule *ExpandedRule) *proto {
 }
 
 func getAttrFromArea(attr string, obj *Area) string {
-	if v, ok := obj.Attr[attr]; ok {
+	if v, ok := obj.attr[attr]; ok {
 		return v
 	}
-	if a := obj.InArea; a != nil {
+	if a := obj.inArea; a != nil {
 		v := getAttrFromArea(attr, a)
-		if obj.Attr == nil {
-			obj.Attr = make(map[string]string)
+		if obj.attr == nil {
+			obj.attr = make(map[string]string)
 		}
-		obj.Attr[attr] = v
+		obj.attr[attr] = v
 		return v
 	}
 	return ""
 }
 
 func getAttrFromZone(attr string, obj *Zone) string {
-	if v, ok := obj.Attr[attr]; ok {
+	if v, ok := obj.attr[attr]; ok {
 		return v
 	}
-	if a := obj.InArea; a != nil {
+	if a := obj.inArea; a != nil {
 		v := getAttrFromArea(attr, a)
-		if obj.Attr == nil {
-			obj.Attr = make(map[string]string)
+		if obj.attr == nil {
+			obj.attr = make(map[string]string)
 		}
-		obj.Attr[attr] = v
+		obj.attr[attr] = v
 		return v
 	}
 	return ""
@@ -134,10 +134,10 @@ func (obj *Network) getAttr(attr string) string {
     return getAttrFromZone(attr, obj.zone);
 }
 func (obj *Subnet) getAttr(attr string) string {
-    return getAttrFromZone(attr, obj.Network.zone);
+    return getAttrFromZone(attr, obj.network.zone);
 }
 func (obj *Interface) getAttr(attr string) string {
-    return getAttrFromZone(attr, obj.Network.zone);
+    return getAttrFromZone(attr, obj.network.zone);
 }
 
 /*########################################################################
@@ -152,7 +152,7 @@ func (obj *Interface) getAttr(attr string) string {
 func setLocalPrtRelation(rules []*Rule) {
 	prtMap := make(map[*proto]bool)
 	for _, rule := range rules {
-		prtList := rule.Prt
+		prtList := rule.prt
 		for _, prt := range prtList {
 			prtMap[prt] = true
 		}
@@ -181,7 +181,7 @@ func checkAttrOverlaps(service, oservice *Service, rule *ExpandedRule) bool {
 		dstAttr = rule.dst.getAttr("overlaps")
 	}
 	overlapsUsed := func() bool {
-		for _, overlap := range service.Overlaps {
+		for _, overlap := range service.overlaps {
 			if oservice == overlap {
 				return true
 			}
@@ -206,7 +206,7 @@ func checkAttrOverlaps(service, oservice *Service, rule *ExpandedRule) bool {
 }
 
 func collectDuplicateRules(rule, other *ExpandedRule) {
-	service := rule.rule.Service
+	service := rule.rule.service
 
 	// Mark duplicate rules in both services.
 
@@ -217,7 +217,7 @@ func collectDuplicateRules(rule, other *ExpandedRule) {
 	// redundandant.
 	rule.redundant = true
 	service.duplicateCount++
-	oservice := other.rule.Service
+	oservice := other.rule.service
 	if !other.redundant {
 		oservice.duplicateCount++
 		other.redundant = true
@@ -271,7 +271,7 @@ func showDuplicateRules () {
 	sNames2Duplicate := make(map[twoNames][]*ExpandedRule)
 	for _, pair := range duplicateRules {
 		rule, other := pair[0], pair[1]
-		key := twoNames{rule.rule.Service.name, other.rule.Service.name}
+		key := twoNames{rule.rule.service.name, other.rule.service.name}
 		sNames2Duplicate[key] = append(sNames2Duplicate[key], rule)
 	}
 	duplicateRules = nil
@@ -295,7 +295,7 @@ func showDuplicateRules () {
 var redundantRules [][2]*ExpandedRule
 
 func collectRedundantRules(rule, other *ExpandedRule, countRef *int) {
-	service := rule.rule.Service
+	service := rule.rule.service
 
 	// Count each redundant rule only once.
 	if !rule.redundant {
@@ -308,7 +308,7 @@ func collectRedundantRules(rule, other *ExpandedRule, countRef *int) {
 		return
 	}
 
-	if checkAttrOverlaps(service, other.rule.Service, rule) {
+	if checkAttrOverlaps(service, other.rule.service, rule) {
 		return
 	}
 
@@ -323,7 +323,7 @@ func showRedundantRules() {
 	sNames2Redundant := make(map[twoNames][][2]*ExpandedRule)
 	for _, pair := range redundantRules {
 		rule, other := pair[0], pair[1]
-		key := twoNames{rule.rule.Service.name, other.rule.Service.name}
+		key := twoNames{rule.rule.service.name, other.rule.service.name}
 		sNames2Redundant[key] = append(sNames2Redundant[key], pair)
 	}
 	redundantRules = nil
@@ -387,7 +387,7 @@ func warnUnusedOverlaps() {
 		if service.disabled {
 			continue
 		}
-		if overlaps := service.Overlaps; overlaps != nil {
+		if overlaps := service.overlaps; overlaps != nil {
 			used := service.overlapsUsed
 			for _, overlap := range overlaps {
 				if overlap.disabled || used[overlap] {
@@ -409,10 +409,10 @@ func warnUnusedOverlaps() {
 func expandRules(rules []*Rule) []*ExpandedRule {
 	var result []*ExpandedRule
 	for _, rule := range rules {
-		service := rule.Rule.Service
-		for _, src := range rule.Src {
-			for _, dst := range rule.Dst {
-				for _, prt := range rule.Prt {
+		service := rule.rule.service
+		for _, src := range rule.src {
+			for _, dst := range rule.dst {
+				for _, prt := range rule.prt {
 					e := fillExpandedRule(rule)
 					e.src = src
 					e.dst = dst
@@ -559,14 +559,14 @@ func findRedundantRules(cmpHash, chgHash ruleTree) int {
 																	}
 																}
 															}
-															dst = dst.up()
+															dst = dst.getUp()
 															if dst == nil {
 																break
 															}
 														}
 													}
 												}
-												src = src.up()
+												src = src.getUp()
 												if src == nil {
 													break
 												}
@@ -607,33 +607,33 @@ func CheckRedundantRules() {
 	// redundant to each other.
 	// Keep deterministic order of rules.
 	index := 0
-	path2index := make(map[pathObj]int)
+	path2index := make(map[pathStore]int)
 	key2rules := make(map[int][]*Rule)
 	add := func(rules []*Rule) {
 		for _, rule := range rules {
-			key, ok := path2index[rule.SrcPath]
+			key, ok := path2index[rule.srcPath]
 			if !ok {
 				key = index
 				index++
-				path2index[rule.SrcPath] = key
+				path2index[rule.srcPath] = key
 			}
 			key2rules[key] = append(key2rules[key], rule)
 		}
 	}
-	add(pathRules.Deny)
-	add(pathRules.Permit)
+	add(pathRules.deny)
+	add(pathRules.permit)
 
 	for key := 0; key < index; key++ {
 		rules := key2rules[key]
 		index := 0
-		path2index := make(map[pathObj]int)
+		path2index := make(map[pathStore]int)
 		key2rules := make(map[int][]*Rule)
 		for _, rule := range rules {
-			key, ok := path2index[rule.DstPath]
+			key, ok := path2index[rule.dstPath]
 			if !ok {
 				key = index
 				index++
-				path2index[rule.DstPath] = key
+				path2index[rule.dstPath] = key
 			}
 			key2rules[key] = append(key2rules[key], rule)
 		}

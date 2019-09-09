@@ -24,7 +24,7 @@ func getIntf(router *Router) []*Interface {
     } else if origInterfaces := router.origInterfaces; origInterfaces != nil {
 		 return origInterfaces
     } else {
-        return router.Interfaces
+        return router.interfaces
     }
 }
 
@@ -105,8 +105,8 @@ func getDenyAnyRule(ipv6 bool) *Rule {
 
 func printHeader(fh *os.File, router *Router, what string) {
 	commentChar := router.model.CommentChar
-	if router.VrfMembers != nil {
-		what += " for " + router.Name;
+	if router.vrfMembers != nil {
+		what += " for " + router.name;
 	}
 	fmt.Fprintln(fh, commentChar, "[", what, "]")
 }
@@ -118,7 +118,7 @@ func iosRouteCode(n net.IPNet) string {
 }
 
 func printRoutes(fh *os.File, router *Router) {
-	ipv6 := router.IPv6
+	ipv6 := router.ipV6
 	model := router.model
 	vrf := router.vrf
 	doAutoDefaultRoute := config.autoDefaultRoute
@@ -132,7 +132,7 @@ func printRoutes(fh *os.File, router *Router) {
 	}
 	net2hopInfo := make(map[*Network]hopInfo)
 
-	for _, intf := range router.Interfaces {
+	for _, intf := range router.interfaces {
 
 		// Must not combine static routes to default route if any
 		// interface has dynamic routing enabled.
@@ -155,8 +155,8 @@ func printRoutes(fh *os.File, router *Router) {
 					continue
 				}
 
-				ip := natNetwork.IP
-				prefixlen, _ := natNetwork.Mask.Size()
+				ip := natNetwork.ip
+				prefixlen, _ := natNetwork.mask.Size()
 				if prefixlen == 0 {
 					doAutoDefaultRoute = false
 				}
@@ -284,7 +284,7 @@ func printRoutes(fh *os.File, router *Router) {
 			}
 
 			// Add combined route.
-			combined := &Network{ IPObj: IPObj{IP: ip}, Mask: combinedMask }
+			combined := &Network{ ipObj: ipObj{ip: ip}, mask: combinedMask }
 			ip2net[string(ip)] = combined
 
 			ip2net = prefix2ip2net[combinedPrefix]
@@ -377,7 +377,7 @@ func printRoutes(fh *os.File, router *Router) {
 		// Substitute routes to one hop with a default route,
 		// if there are at least two entries.
 		max := 1
-		for _, intf := range router.Interfaces {
+		for _, intf := range router.interfaces {
 			hop2nets := intf2hop2netInfos[intf]
 			for hop, nets := range hop2nets {
 				count := 0
@@ -416,14 +416,14 @@ func printRoutes(fh *os.File, router *Router) {
 	}
 	nxosPrefix := ""
 
-	for _, intf := range router.Interfaces {
+	for _, intf := range router.interfaces {
 		hop2nets := intf2hop2netInfos[intf]
 		hops := make([]*Interface, 0, len(hop2nets))
 		for k, _ := range hop2nets {
 			hops = append(hops, k)
 		}
 		sort.Slice(hops, func(i, j int) bool {
-			return hops[i].Name < hops[j].Name
+			return hops[i].name < hops[j].name
 		})
 		for _, hop := range hops {
 
@@ -433,7 +433,7 @@ func printRoutes(fh *os.File, router *Router) {
 			if intf.unnumbered || intf.negotiated || intf.tunnel {
 				hopAddr = intf.hardware.name
 			} else {
-				hopAddr = hop.IP.String()
+				hopAddr = hop.ip.String()
 			}
 
 			for _, netinfo := range hop2nets[hop] {
@@ -505,19 +505,19 @@ func getSplitTunnelNets(intf *Interface) []*Network {
 	seen := make(map[*Network]bool)
 	checkRules := func (rules []*Rule, takeDst bool) {
 		for _, rule := range rules {
-			if rule.Deny {
+			if rule.deny {
 				continue
 			}
-			objList := rule.Dst
+			objList := rule.dst
 			if takeDst {
-				objList = rule.Src
+				objList = rule.src
 			}
 			for _, obj := range objList {
-				network := obj.network()
+				network := obj.getNetwork()
 
 				// Don't add 'any' (resulting from global:permit)
 				// to split_tunnel networks.
-				prefix, _ := network.Mask.Size()
+				prefix, _ := network.mask.Size()
 				if prefix == 0 {
 					continue
 				}
@@ -535,13 +535,13 @@ func getSplitTunnelNets(intf *Interface) []*Network {
 
 	// Sort for deterministic output:
 	sort.Slice(result, func(i, j int) bool {
-		switch bytes.Compare(result[i].IP, result[j].IP) {
+		switch bytes.Compare(result[i].ip, result[j].ip) {
 		case -1:
 			return true
 		case 1:
 			return false
 		}
-		return bytes.Compare(result[i].Mask, result[j].Mask) == -1
+		return bytes.Compare(result[i].mask, result[j].mask) == -1
 	})
 	return result
 }
@@ -642,7 +642,7 @@ var asaVpnAttrNeedValue = map[string]bool{
 }
 
 func printAsavpn(fh *os.File, router *Router) {
-	ipv6 := router.IPv6
+	ipv6 := router.ipV6
 
 	globalGroupName := "global"
 	fmt.Fprintln(fh, "group-policy", globalGroupName, "internal")
@@ -734,7 +734,7 @@ func printAsavpn(fh *os.File, router *Router) {
 	networkSeen := make(map[*Network]bool)
 	aclCounter := 1
 	denyAny := getDenyAnyRule(ipv6)
-	for _, intf := range router.Interfaces {
+	for _, intf := range router.interfaces {
 		if !intf.tunnel {
 			continue
 		}
@@ -753,7 +753,7 @@ func printAsavpn(fh *os.File, router *Router) {
 				src := idIntf.src
 				attributes := combineAttr(
 					router.radiusAttributes,
-					src.network().radiusAttributes,
+					src.getNetwork().radiusAttributes,
 					src.radiusAttributes)
 
 				// Define split tunnel ACL.
@@ -790,9 +790,9 @@ func printAsavpn(fh *os.File, router *Router) {
 								objects[i] = n
 							}
 							rule = &Rule{
-								Src: objects,
-								Dst: []someObj{getNetwork00(ipv6)},
-								Prt: []*proto{prtIP},
+								src: objects,
+								dst: []someObj{getNetwork00(ipv6)},
+								prt: []*proto{prtIP},
 							}
 						} else {
 							rule = denyAny
@@ -820,9 +820,9 @@ func printAsavpn(fh *os.File, router *Router) {
 				// Only check for valid source address at vpn-filter.
 				idIntf.rules = nil
 				rule := &Rule{
-					Src: []someObj{src},
-					Dst: []someObj{getNetwork00(ipv6)},
-					Prt: []*proto{prtIP},
+					src: []someObj{src},
+					dst: []someObj{getNetwork00(ipv6)},
+					prt: []*proto{prtIP},
 				}
 				filterName := "vpn-filter-" + idName
 				info := &aclInfo{
@@ -834,9 +834,9 @@ func printAsavpn(fh *os.File, router *Router) {
 				router.aclList = append(router.aclList, info)
 				printAclPlaceholder(fh, router, filterName)
 
-				ip := src.IP.String()
-				network := src.network()
-				if isHostMask(src.Mask) {
+				ip := src.ip.String()
+				network := src.getNetwork()
+				if isHostMask(src.mask) {
 
 					// For anyconnect clients.
 					pos := strings.IndexByte(id, '@')
@@ -846,7 +846,7 @@ func printAsavpn(fh *os.File, router *Router) {
 					extendedKey[domain] = attributes["check-extended-key-usage"]
 					delete(attributes, "check-extended-key-usage")
 
-					mask := net.IP(network.Mask).String()
+					mask := net.IP(network.mask).String()
 					groupPolicyName := ""
 					if len(attributes) > 0 {
 						groupPolicyName = "VPN-group-" + idName
@@ -863,11 +863,11 @@ func printAsavpn(fh *os.File, router *Router) {
 					fmt.Fprintln(fh, )
 				} else {
 					name := "pool-" + idName
-					mask := net.IP(src.Mask).String()
-					n := len(src.IP)
+					mask := net.IP(src.mask).String()
+					n := len(src.ip)
 					maxIP := make(net.IP, n)
 					for i := 0; i < n; i++ {
-						maxIP[i] = src.IP[i] | ^src.Mask[i]
+						maxIP[i] = src.ip[i] | ^src.mask[i]
 					}
 					max := maxIP.String()
 					fmt.Fprintln(fh, "ip local pool", name, ip + "-" + max, "mask", mask)
@@ -877,7 +877,7 @@ func printAsavpn(fh *os.File, router *Router) {
 					printGroupPolicy(groupPolicyName, attributes)
 
 					if ldapId := src.ldapId; ldapId != "" {
-						network := src.network()
+						network := src.getNetwork()
 						netAttr := combineAttr(
 							router.radiusAttributes,
 							network.radiusAttributes,
@@ -920,9 +920,9 @@ func printAsavpn(fh *os.File, router *Router) {
 				objects[i] = n
 			}
 			rules := []*Rule{{
-				Src: objects,
-				Dst: []someObj{getNetwork00(ipv6)},
-				Prt: []*proto{prtIP},
+				src: objects,
+				dst: []someObj{getNetwork00(ipv6)},
+				prt: []*proto{prtIP},
 			}}
 			idName := genIdName(id)
 			filterName := "vpn-filter-" + idName
@@ -1051,7 +1051,7 @@ func printAclSuffix(fh *os.File, router *Router) {
 }
 
 func printIptablesAcls(fh *os.File, router *Router) {
-	for _, hardware := range router.Hardware {
+	for _, hardware := range router.hardware {
 
 		// Ignore if all logical interfaces are loopback interfaces.
 		if hardware.loopback {
@@ -1106,11 +1106,11 @@ func printIptablesAcls(fh *os.File, router *Router) {
 func printCiscoAcls(fh *os.File, router *Router) {
 	model := router.model
 	filter := model.filter
-	managedLocal := router.Managed == "local"
-	ipv6 := router.IPv6
+	managedLocal := router.managed == "local"
+	ipv6 := router.ipV6
 	permitAny := getPermitAnyRule(ipv6)
 
-	for _, hardware := range router.Hardware {
+	for _, hardware := range router.hardware {
 
 		// Ignore if all logical interfaces are loopback interfaces.
 		if hardware.loopback {
@@ -1288,14 +1288,14 @@ func genCryptoRules (local, remote []*Network) []*Rule {
 		dst[i] = n
 	}
 	return []*Rule {{
-		Src: src,
-		Dst: dst,
-		Prt: []*proto{prtIP},
+		src: src,
+		dst: dst,
+		prt: []*proto{prtIP},
 	}}
 }
 
 func printEzvpn(fh *os.File, router *Router) {
-	interfaces := router.Interfaces
+	interfaces := router.interfaces
 	var tunnelIntf *Interface
 	for _, intf := range interfaces {
 		if intf.tunnel {
@@ -1350,7 +1350,7 @@ func printEzvpn(fh *os.File, router *Router) {
 
 	// Crypto ACL controls which traffic needs to be encrypted.
 	cryptoRules :=
-      genCryptoRules(tunnelIntf.peer.peerNetworks, []*Network{getNetwork00(router.IPv6)})
+      genCryptoRules(tunnelIntf.peer.peerNetworks, []*Network{getNetwork00(router.ipV6)})
 	acls := &aclInfo{
         name: cryptoAclName,
         rules: cryptoRules,
@@ -1379,7 +1379,7 @@ func printEzvpn(fh *os.File, router *Router) {
 		"interface Virtual-Template" + strconv.Itoa(virtualInterfaceNumber),
 		"type tunnel")
 	var prefix string
-	if router.IPv6 {
+	if router.ipV6 {
 		prefix = " ipv6 traffic-filter"
 	} else {
 		prefix = " ip access-group"
@@ -1403,12 +1403,12 @@ func printCryptoAcl(fh *os.File, intf *Interface, suffix string, crypto *Crypto)
 	} else {
 		hub = intf.peer
 	}
-	router := intf.Router
+	router := intf.router
 	var local []*Network
 	if crypto.detailedCryptoAcl {
 		local = getSplitTunnelNets(hub)
 	} else {
-		local = []*Network{getNetwork00(router.IPv6)}
+		local = []*Network{getNetwork00(router.ipV6)}
 	}
 	remote := hub.peerNetworks
 	if !isHub {
@@ -1430,7 +1430,7 @@ func printCryptoAcl(fh *os.File, intf *Interface, suffix string, crypto *Crypto)
 // Print filter ACL. It controls which traffic is allowed to leave from
 // crypto tunnel. This may be needed, if we don't fully trust our peer.
 func printCryptoFilterAcl(fh *os.File, intf *Interface, suffix string) string {
-	router := intf.Router
+	router := intf.router
 
 	if router.model.noCryptoFilter {
 		return ""
@@ -1539,7 +1539,7 @@ func printStaticCryptoMap (fh *os.File, router *Router, hardware *Hardware, mapN
 	sorted := make([]*Interface, 0, len(interfaces))
 	sorted = append(sorted, interfaces ...)
 	sort.Slice(sorted, func(i, j int) bool {
-		return bytes.Compare(sorted[i].peer.realInterface.IP, sorted[j].peer.realInterface.IP) == -1
+		return bytes.Compare(sorted[i].peer.realInterface.ip, sorted[j].peer.realInterface.ip) == -1
 	})
 
 	// Build crypto map for each tunnel interface.
@@ -1648,7 +1648,7 @@ func printCrypto (fh *os.File, router *Router) {
 	// List of ipsec definitions used at current router.
 	var ipsec []*Ipsec
 	seenIpsec := make(map[*Ipsec]bool)
-	for _, intf := range router.Interfaces {
+	for _, intf := range router.interfaces {
 		if intf.tunnel {
 			i := intf.crypto.ipsec
 			if seenIpsec[i] {
@@ -1801,7 +1801,7 @@ func printCrypto (fh *os.File, router *Router) {
 		}
 	}
 
-	for _, hardware := range router.Hardware {
+	for _, hardware := range router.hardware {
 
 		// Collect tunnel interfaces attached to each hardware interface.
 		// Differentiate on peers having static || dynamic IP address.
@@ -1853,8 +1853,8 @@ func printInterface (fh *os.File, router *Router) {
 	}
 	class := model.Class
 	stateful := !model.stateless
-	ipv6 := router.IPv6
-	for _, hardware := range router.Hardware {
+	ipv6 := router.ipV6
+	for _, hardware := range router.hardware {
 		name := hardware.name
 		var subcmd []string
 		secondary := false
@@ -1872,8 +1872,8 @@ func printInterface (fh *os.File, router *Router) {
 			} else if intf.negotiated {
 				addrCmd = "ip address negotiated"
 			} else if model.usePrefix || ipv6 {
-				addr := intf.IP.String()
-				prefix, _ := intf.Network.Mask.Size()
+				addr := intf.ip.String()
+				prefix, _ := intf.network.mask.Size()
 				if ipv6 {
 					addrCmd = "ipv6"
 				} else {
@@ -1884,8 +1884,8 @@ func printInterface (fh *os.File, router *Router) {
 					addrCmd += " secondary"
 				}
 			} else {
-				addr := intf.IP.String()
-				mask := net.IP(intf.Network.Mask).String()
+				addr := intf.ip.String()
+				mask := net.IP(intf.network.mask).String()
 				addrCmd = "ip address " + addr + " " + mask
 				if secondary {
 					addrCmd += " secondary"
@@ -1984,8 +1984,8 @@ func getNeedProtect(r *Router) []*Interface {
 	if !r.needProtect {
 		return nil
 	}
-	for _, i := range r.Interfaces {
-		if len(i.IP) == 0 {
+	for _, i := range r.interfaces {
+		if len(i.ip) == 0 {
 			continue
 		}
 		list = append(list, i)
@@ -2031,12 +2031,12 @@ func getCachedAddrList(l []someObj, nc *natCache) []string {
 func printAcls (fh *os.File, vrfMembers []*Router) {
 	var aclList []*jcode.ACLInfo
 	for _, router := range vrfMembers {
-		managed         := router.Managed
+		managed         := router.managed
 		secondaryFilter := strings.HasSuffix(managed, "secondary")
 		standardFilter  := managed == "standard"
 		model           := router.model
 		doAuth          := model.DoAuth
-		activeLog       := router.Log
+		activeLog       := router.log
 		needProtect     := getNeedProtect(router)
 
 		process := func(acl *aclInfo) *jcode.ACLInfo {
@@ -2099,15 +2099,15 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 				for i, rule := range rules {
 					newRule := new(jcode.Rule)
 					jRules[i] = newRule
-					if rule.Deny {
+					if rule.deny {
 						newRule.Deny = 1
 					}
 
 					// Add code for logging.
 					// This code is machine specific.
-					if activeLog != nil && rule.Log != "" {
+					if activeLog != nil && rule.log != "" {
 						logCode := ""
-						for _, tag := range strings.Split(rule.Log, ",") {
+						for _, tag := range strings.Split(rule.log, ",") {
 							if modifier, ok := activeLog[tag]; ok {
 								if modifier != "" {
 									normalized := model.logModifiers[modifier]
@@ -2132,10 +2132,10 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 							var objList []someObj
 							var useCache *natCache
 							if isSrc {
-								objList = rule.Src
+								objList = rule.src
 								useCache = addrCache
 							} else {
-								objList = rule.Dst
+								objList = rule.dst
 								useCache = dstAddrCache
 							}
 							for _, obj := range objList {
@@ -2166,7 +2166,7 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 								var subst *Network
 								switch o := obj.(type) {
 								case *Subnet, *Interface:
-									net := obj.network()
+									net := obj.getNetwork()
 									if net.hasOtherSubnet {
 										continue
 									}
@@ -2182,7 +2182,7 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 									}
 
 									// Ignore loopback network.
-									if isHostMask(subst.Mask) {
+									if isHostMask(subst.mask) {
 										continue
 									}
 
@@ -2209,14 +2209,14 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 						newRule.OptSecondary = 1
 					}
 
-					newRule.Src = getCachedAddrList(rule.Src, addrCache)
-					newRule.Dst = getCachedAddrList(rule.Dst, dstAddrCache)
-					prtList := make([]string, len(rule.Prt))
-					for i, p := range rule.Prt {
+					newRule.Src = getCachedAddrList(rule.src, addrCache)
+					newRule.Dst = getCachedAddrList(rule.dst, dstAddrCache)
+					prtList := make([]string, len(rule.prt))
+					for i, p := range rule.prt {
 						prtList[i] = printPrt(p)
 					}
 					newRule.Prt = prtList
-					if srcRange := rule.SrcRange; srcRange != nil {
+					if srcRange := rule.srcRange; srcRange != nil {
 						newRule.SrcRange = printPrt(srcRange)
 					}
 				}
@@ -2367,9 +2367,9 @@ func printCode (dir string) {
 				continue
 			}
 
-			deviceName := router.DeviceName
+			deviceName := router.deviceName
 			path := deviceName
-			if router.IPv6 {
+			if router.ipV6 {
 				path = "ipv6/" + path
 				v6dir := dir + "/ipv6"
 				if !checkedV6Dir && !file.IsDir(v6dir) {
@@ -2392,12 +2392,12 @@ func printCode (dir string) {
 
 			// Restore interfaces of split router.
 			if orig := router.origInterfaces; orig != nil {
-				router.Interfaces = orig
-				router.Hardware   = router.OrigHardware
+				router.interfaces = orig
+				router.hardware   = router.origHardware
 			}
 
 			// Collect VRF members.
-			vrfMembers := router.VrfMembers
+			vrfMembers := router.vrfMembers
 			if vrfMembers == nil {
 				vrfMembers = []*Router{router}
 			}
@@ -2413,8 +2413,8 @@ func printCode (dir string) {
 			header("Model =", model.Class)
 			ips := make([]string, 0, len(vrfMembers))
 			for _, r := range vrfMembers {
-				if r.AdminIP != nil {
-					ips = append(ips, r.AdminIP...)
+				if r.adminIP != nil {
+					ips = append(ips, r.adminIP...)
 				}
 			}
 			if len(ips) != 0 {
@@ -2424,7 +2424,7 @@ func printCode (dir string) {
 			for _, vrouter := range vrfMembers {
 				seen[vrouter] = true
 				printRoutes(fd, vrouter)
-				if vrouter.Managed == "" {
+				if vrouter.managed == "" {
 					continue
 				}
 				printCrypto(fd, vrouter)

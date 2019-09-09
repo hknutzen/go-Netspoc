@@ -13,6 +13,10 @@ func info(format string, args ...interface{}) {
 	}
 }
 
+func debug(format string, args ...interface{}) {
+	info(format, args...)
+}
+
 func checkAbort() {
 	ErrorCounter++
 	if ErrorCounter >= config.MaxErrors {
@@ -21,8 +25,22 @@ func checkAbort() {
 	}
 }
 
+func abortOnError() {
+	if ErrorCounter > 0 {
+		fmt.Fprintf(os.Stderr, "Aborted with %d errors\n", ErrorCounter)
+		os.Exit(ErrorCounter)
+	}
+}
+
 func errMsg(format string, args ...interface{}) {
 	string := "Error: " + fmt.Sprintf(format, args...)
+	fmt.Fprintln(os.Stderr, string)
+	checkAbort()
+}
+
+func internalErr(format string, args ...interface{}) {
+	abortOnError()
+	string := "Internal error: " + fmt.Sprintf(format, args...)
 	fmt.Fprintln(os.Stderr, string)
 	checkAbort()
 }

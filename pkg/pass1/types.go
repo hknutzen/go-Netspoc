@@ -16,36 +16,35 @@ type Config struct {
 }
 
 type someObj interface {
-	name() string
-	network() *Network
-	up() someObj
+	getName() string
+	getNetwork() *Network
+	getUp() someObj
 	address(nn natSet) net.IPNet
 	getAttr(attr string) string
 	setCommon(m xMap) // for importFromPerl
 }
-type pathObj interface{}
 
-type IPObj struct {
-	Name string
-	IP   net.IP
+type ipObj struct {
+	name string
+	ip   net.IP
 	unnumbered bool
 	negotiated bool
 	short bool
 	tunnel bool
 	bridged bool
-	Up   someObj
+	up   someObj
 }
 
-func (x *IPObj) name() string { return x.Name }
-func (x *IPObj) up() someObj { return x.Up }
+func (x *ipObj) getName() string { return x.name }
+func (x *ipObj) getUp() someObj { return x.up }
 
 type natMap map[string]*Network
 
 type Network struct {
-	IPObj
-	Mask       net.IPMask
-	Subnets    []*Subnet
-	Interfaces []*Interface
+	ipObj
+	mask       net.IPMask
+	subnets    []*Subnet
+	interfaces []*Interface
 	zone       *Zone
 	hasOtherSubnet bool
 	maxSecondaryNet *Network
@@ -59,17 +58,17 @@ type Network struct {
 	radiusAttributes map[string]string
 }
 
-func (x *Network) network() *Network { return x }
+func (x *Network) getNetwork() *Network { return x }
 
-type NetObj struct {
-	IPObj
-	Network *Network
+type netObj struct {
+	ipObj
+	network *Network
 }
-func (x *NetObj) network() *Network { return x.Network }
+func (x *netObj) getNetwork() *Network { return x.network }
 
 type Subnet struct {
-	NetObj
-	Mask    net.IPMask
+	netObj
+	mask    net.IPMask
 	nat     map[string]net.IP
 	id      string
 	ldapId  string
@@ -92,7 +91,7 @@ type Model struct {
 	routing     string
 	stateless   bool
 	statelessSelf bool
-	statelessIcmp bool
+	statelessICMP bool
 	usePrefix   bool
 }
 
@@ -117,15 +116,17 @@ type aclInfo struct {
 }
 
 type Router struct {
-	Name       string
-	DeviceName string
-	Managed    string
-	AdminIP    []string
+	pathStoreData
+	pathObjData
+	name       string
+	deviceName string
+	managed    string
+	semiManaged bool
+	adminIP    []string
 	model      *Model
-	Log        map[string]string
+	log        map[string]string
 	logDeny    bool
 	localMark  int
-	Interfaces []*Interface
 	origInterfaces []*Interface
 	crosslinkInterfaces []*Interface
 	filterOnly []net.IPNet
@@ -133,21 +134,24 @@ type Router struct {
 	needProtect bool
 	noGroupCode bool
 	noSecondaryOpt map[*Network]bool
-	Hardware   []*Hardware
-	OrigHardware []*Hardware
+	hardware   []*Hardware
+	origHardware []*Hardware
 	origRouter *Router
 	radiusAttributes map[string]string
+//	reachablePart map[int]bool
 	routingOnly bool
 	trustPoint string
-	VrfMembers []*Router
-	IPv6       bool
+	vrfMembers []*Router
+	ipV6       bool
 	aclList    []*aclInfo
 	vrf        string
 }
+func (x *Router) getName() string { return x.name }
 
 type Interface struct {
-	NetObj
-	Router  		  *Router
+	netObj
+	pathStoreData
+	router  		  *Router
 	crypto        *Crypto
 	dhcpClient    bool
 	dhcpServer    bool
@@ -156,10 +160,16 @@ type Interface struct {
 	id            string
 	isHub         bool
 	hardware      *Hardware
+	loop          *loop
 	loopback      bool
+	loopEntryZone map[pathStore]pathStore
+	loopZoneBorder bool
 	mainInterface *Interface
 	nat     		  map[string]net.IP
 	natSet        natSet
+	origMain      *Interface
+	pathRestrict  []*pathRestriction
+//	reachableAt   map[pathObj][]int
 	peer    		  *Interface
 	peerNetworks  []*Network
 	realInterface *Interface
@@ -173,6 +183,7 @@ type Interface struct {
 	intfRules     RuleList
 	outRules      RuleList
 	idRules       map[string]*idInterface
+	toZone1       pathObj
 	zone          *Zone
 }
 type idInterface struct {
@@ -207,6 +218,10 @@ type Hardware struct {
 	subcmd      []string
 }
 
+type pathRestriction struct {
+	activePath  bool
+}
+
 type Crypto struct {
 	ipsec *Ipsec
 	detailedCryptoAcl bool
@@ -232,18 +247,22 @@ type Isakmp struct {
 }
 
 type Zone struct {
-	Name     string
-	Networks []*Network
-	Attr     map[string]string
-	InArea   *Area
-	interfaces []*Interface
+	pathStoreData
+	pathObjData
+	name     string
+	networks []*Network
+	attr     map[string]string
+	inArea   *Area
+	partition     string
+//	reachablePart map[int]bool
 	zoneCluster []*Zone
 }
+func (x *Zone) getName() string { return x.name }
 
 type Area struct {
-	Name     string
-	Attr     map[string]string
-	InArea   *Area
+	name     string
+	attr     map[string]string
+	inArea   *Area
 }
 
 type modifiers struct {
@@ -281,37 +300,37 @@ type Service struct {
 	duplicateCount   	 int
 	redundantCount   	 int
 	hasSameDupl      	 map[*Service]bool
-	Overlaps         	 []*Service
+	overlaps         	 []*Service
 	overlapsUsed     	 map[*Service]bool
 	overlapsRestricted bool
 }
 
 type UnexpRule struct {
-	Prt           []protoOrName
-	Service       *Service
+	prt           []protoOrName
+	service       *Service
 }
 
 type Rule struct {
-	Deny          bool
-	Src           []someObj
-	Dst           []someObj
-	Prt           ProtoList
-	SrcRange      *proto
-	Log           string
-	Rule          *UnexpRule
-	SrcPath       pathObj
-	DstPath       pathObj
-	Stateless     bool
-	StatelessICMP bool
-	Overlaps      bool
+	deny          bool
+	src           []someObj
+	dst           []someObj
+	prt           ProtoList
+	srcRange      *proto
+	log           string
+	rule          *UnexpRule
+	srcPath       pathStore
+	dstPath       pathStore
+	stateless     bool
+	statelessICMP bool
+	overlaps      bool
 	someNonSecondary bool
 	somePrimary   bool
 }
 type RuleList []*Rule
 
 type PathRules struct {
-	Permit RuleList
-	Deny   RuleList
+	permit RuleList
+	deny   RuleList
 }
 
 type protoOrName interface{}

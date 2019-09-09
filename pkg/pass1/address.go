@@ -33,20 +33,20 @@ func getNatNetwork(network *Network, natSet natSet) *Network {
 
 func (obj *Network) address (nn natSet) net.IPNet {
 	network := getNatNetwork(obj, nn)
-	return net.IPNet{IP: network.IP, Mask: network.Mask}
+	return net.IPNet{IP: network.ip, Mask: network.mask}
 }
 
 func (obj *Subnet) address (nn natSet) net.IPNet {
-	network := getNatNetwork(obj.Network, nn)
-	return natAddress(obj.IP, obj.Mask, obj.nat, network)
+	network := getNatNetwork(obj.network, nn)
+	return natAddress(obj.ip, obj.mask, obj.nat, network)
 }
 
 func (obj *Interface) address (nn natSet) net.IPNet {
-	network := getNatNetwork(obj.Network, nn)
+	network := getNatNetwork(obj.network, nn)
 	if obj.negotiated {
-		return net.IPNet{IP: network.IP, Mask: network.Mask}
+		return net.IPNet{IP: network.ip, Mask: network.mask}
 	}
-	return natAddress(obj.IP, getHostMask(obj.IP), obj.nat, network)
+	return natAddress(obj.ip, getHostMask(obj.ip), obj.nat, network)
 }
 
 func natAddress (ip net.IP, mask net.IPMask, nat map[string]net.IP, network *Network) net.IPNet {
@@ -57,16 +57,16 @@ func natAddress (ip net.IP, mask net.IPMask, nat map[string]net.IP, network *Net
 			// Single static NAT IP for this interface.
 			return net.IPNet{IP: ip, Mask: getHostMask(ip) }
 		} else {
-			return net.IPNet{IP: network.IP, Mask: network.Mask}
+			return net.IPNet{IP: network.ip, Mask: network.mask}
 		}
 	}
 
 	// Take higher bits from network NAT, lower bits from original IP.
 	// This works with and without NAT.
-	n := len(network.IP)
+	n := len(network.ip)
 	natIP := make(net.IP, n)
 	for i := 0; i < n; i++ {
-		natIP[i] = network.IP[i] | ip[i] & ^network.Mask[i]
+		natIP[i] = network.ip[i] | ip[i] & ^network.mask[i]
 	}
 	return net.IPNet{IP: natIP, Mask: mask }
 }
