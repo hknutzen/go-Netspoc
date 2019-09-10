@@ -183,9 +183,9 @@ func distributeRule(rule *Rule, inIntf, outIntf *Interface) {
 	}
 }
 
-func getMulticastObjects(info mcastInfo, ipv6 bool) []someObj {
+func getMulticastObjects(info mcastInfo, ipV6 bool) []someObj {
 	var ipList []string
-	if ipv6 {
+	if ipV6 {
 		ipList = info.v6
 	} else {
 		ipList = info.v4
@@ -193,7 +193,7 @@ func getMulticastObjects(info mcastInfo, ipv6 bool) []someObj {
 	result := make([]someObj, len(ipList))
 	for i, s := range ipList {
 		ip := net.ParseIP(s)
-		result[i] = &Network{ipObj: ipObj{ip: ip}, mask: getHostMask(ip)}
+		result[i] = &Network{ipObj: ipObj{ip: ip}, mask: getHostMask(ip, ipV6)}
 	}
 	return result
 }
@@ -220,6 +220,9 @@ func addRouterAcls() {
 						if hardware == outHardware {
 							continue
 						}
+						if hardware.ioRules == nil {
+							hardware.ioRules = make(map[string]RuleList)
+						}
 						hardware.ioRules[outHardware.name] =
 							[]*Rule{permitAny}
 					}
@@ -237,7 +240,7 @@ func addRouterAcls() {
 
 				// Current router is used as default router even for
 				// some internal networks.
-				if intf.reroutePermit != nil {
+				if len(intf.reroutePermit) != 0 {
 					netList := intf.reroutePermit
 					rule := &Rule{
 						src: []someObj{getNetwork00(ipv6)},
@@ -335,7 +338,7 @@ func addRouterAcls() {
 func distributeGeneralPermit() {
 	for _, router := range managedRouters {
 		generalPermit := router.generalPermit
-		if generalPermit == nil {
+		if len(generalPermit) == 0 {
 			continue
 		}
 		net00List := []someObj{getNetwork00(router.ipV6)}

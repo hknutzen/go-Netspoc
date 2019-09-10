@@ -7,7 +7,6 @@ import (
 	"net"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -197,6 +196,7 @@ func convNetwork(x xAny) *Network {
 	n.nat = convNetNat(m["nat"])
 	n.dynamic = getBool(m["dynamic"])
 	n.hidden = getBool(m["hidden"])
+	n.ipV6 = getBool(m["ipv6"])
 	n.natTag = getString(m["nat_tag"])
 	n.certId = getString(m["cert_id"])
 	n.radiusAttributes = convRadiusAttributes(m["radius_attributes"])
@@ -397,6 +397,8 @@ func convInterface(x xAny) *Interface {
 	i.setCommon(m)
 	i.router = convRouter(m["router"])
 	i.crypto = convCrypto(m["crypto"])
+	i.dhcpClient = getBool(m["dhcp_client"])
+	i.dhcpServer = getBool(m["dhcp_server"])
 	i.hub = convCryptoList(m["hub"])
 	i.spoke = convCrypto(m["spoke"])
 	i.id = getString(m["id"])
@@ -416,6 +418,7 @@ func convInterface(x xAny) *Interface {
 	i.peerNetworks = convNetworks(m["peer_networks"])
 	i.realInterface = convInterface(m["real_interface"])
 	i.redundancyInterfaces = convInterfaces(m["redundancy_interfaces"])
+	i.redundancyType = getString(m["redundancy_type"])
 	i.redundant = getBool(m["redundant"])
 	i.reroutePermit = convSomeObjects(m["reroute_permit"])
 	if x, ok := m["routes"]; ok {
@@ -505,13 +508,14 @@ func convHardware(x xAny) *Hardware {
 	h := new(Hardware)
 	m["ref"] = h
 	h.interfaces = convInterfaces(m["interfaces"])
+	h.crosslink = getBool(m["crosslink"])
 	h.loopback = getBool(m["loopback"])
 	h.name = getString(m["name"])
 	h.natSet = convNatSet(m["nat_set"])
 	h.dstNatSet = convNatSet(m["dst_nat_set"])
 	h.needOutAcl = getBool(m["need_out_acl"])
 	h.noInAcl = getBool(m["no_in_acl"])
-	h.rules = convRules(m["rules"])
+/*	h.rules = convRules(m["rules"])
 	h.intfRules = convRules(m["intf_rules"])
 	h.outRules = convRules(m["out_rules"])
 	if x, ok := m["io_rules"]; ok {
@@ -522,6 +526,7 @@ func convHardware(x xAny) *Hardware {
 		}
 		h.ioRules = n
 	}
+*/
 	h.subcmd = getStrings(m["subcmd"])
 	return h
 }
@@ -536,30 +541,25 @@ func convHardwareList(x xAny) []*Hardware {
 
 func convPathObj(x xAny) pathObj {
 	m := getMap(x)
-	name := getString(m["name"])
-	prefix := strings.SplitN(name, ":", 2)[0]
-	switch prefix {
-	case "router":
-		return convRouter(x)
-	case "any":
+
+	// Don't check name, because managed host is also stored as interface.
+	if _, ok := m["networks"]; ok {
 		return convZone(x)
 	}
-	return nil
+	return convRouter(x)
 }
 
 func convPathStore(x xAny) pathStore {
 	m := getMap(x)
-	name := getString(m["name"])
-	prefix := strings.SplitN(name, ":", 2)[0]
-	switch prefix {
-	case "interface":
+
+	// Don't check name, because managed host is also stored as interface.
+	if _, ok := m["router"]; ok {
 		return convInterface(x)
-	case "router":
-		return convRouter(x)
-	case "any":
+	}
+	if _, ok := m["networks"]; ok {
 		return convZone(x)
 	}
-	return nil
+	return convRouter(x)
 }
 
 func convSomeObj(x xAny) someObj {

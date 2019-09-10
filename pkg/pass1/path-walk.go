@@ -598,7 +598,7 @@ func fixupZonePath(startEnd *Interface, inOut int, lPath *loopPath) {
 				j++
 			}
 		}
-		lPath.leave = lPath.leave[:j]
+		lPath.enter = lPath.enter[:j]
 		j = 0
 		for _, intf := range lPath.leave {
 			if hasOut[intf] {
@@ -1338,7 +1338,7 @@ func pathWalk(rule *Rule, fun func(r *Rule, i, o *Interface), where string) {
 	// interface with pathrestriction.
 	fromStore, toStore := rule.srcPath, rule.dstPath
 
-	debug(rule.print());
+/*	debug(rule.print());
 	debug(" start: %s, %s at %s",fromStore.getName(), toStore.getName(), where)
 	fun2 := fun
 	fun = func(rule *Rule, i, o *Interface) {
@@ -1352,7 +1352,7 @@ func pathWalk(rule *Rule, fun func(r *Rule, i, o *Interface), where string) {
 		debug(" Walk: %s, %s", inName, outName)
 		fun2(rule, i, o)
 	}
-
+*/
 	// Identify path from source to destination if not known.
 	if _, found := fromStore.getPath1()[toStore]; !found {
 		if !pathMark(fromStore, toStore) {

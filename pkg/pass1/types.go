@@ -51,6 +51,7 @@ type Network struct {
 	nat        map[string]*Network
 	dynamic    bool
 	hidden     bool
+	ipV6       bool
 	natTag     string
 	certId     string
 	filterAt   map[int]bool

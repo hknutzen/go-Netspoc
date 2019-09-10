@@ -4,11 +4,11 @@ import (
 	"net"
 )
 
-func getHostMask(ip net.IP) net.IPMask {
-	if len(ip) == 4 {
-		return net.CIDRMask(32, 32)
+func getHostMask(ip net.IP, ipv6 bool) net.IPMask {
+	if ipv6 {
+		return net.CIDRMask(128, 128)
 	}
-	return net.CIDRMask(128, 128)
+	return net.CIDRMask(32, 32)
 }
 
 var zeroIP = net.ParseIP("0.0.0.0")
@@ -38,7 +38,7 @@ func (obj *Network) address (nn natSet) net.IPNet {
 
 func (obj *Subnet) address (nn natSet) net.IPNet {
 	network := getNatNetwork(obj.network, nn)
-	return natAddress(obj.ip, obj.mask, obj.nat, network)
+	return natAddress(obj.ip, obj.mask, obj.nat, network, obj.network.ipV6)
 }
 
 func (obj *Interface) address (nn natSet) net.IPNet {
@@ -46,16 +46,17 @@ func (obj *Interface) address (nn natSet) net.IPNet {
 	if obj.negotiated {
 		return net.IPNet{IP: network.ip, Mask: network.mask}
 	}
-	return natAddress(obj.ip, getHostMask(obj.ip), obj.nat, network)
+	ipV6 := obj.network.ipV6
+	return natAddress(obj.ip, getHostMask(obj.ip, ipV6), obj.nat, network, ipV6)
 }
 
-func natAddress (ip net.IP, mask net.IPMask, nat map[string]net.IP, network *Network) net.IPNet {
+func natAddress (ip net.IP, mask net.IPMask, nat map[string]net.IP, network *Network, ipV6 bool) net.IPNet {
 	if network.dynamic {
 		natTag := network.natTag
 		if ip, ok := nat[natTag]; ok {
 
 			// Single static NAT IP for this interface.
-			return net.IPNet{IP: ip, Mask: getHostMask(ip) }
+			return net.IPNet{IP: ip, Mask: getHostMask(ip, ipV6) }
 		} else {
 			return net.IPNet{IP: network.ip, Mask: network.mask}
 		}
