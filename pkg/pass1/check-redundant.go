@@ -130,14 +130,35 @@ func getAttrFromZone(attr string, obj *Zone) string {
 	return ""
 }
 
+func getAttrFromNetwork(attr string, obj *Network) string {
+	if v, ok := obj.attr[attr]; ok {
+		return v
+	}
+	if up := obj.up; up != nil {
+		v := getAttrFromNetwork(attr, up.(*Network))
+		if obj.attr == nil {
+			obj.attr = make(map[string]string)
+		}
+		obj.attr[attr] = v
+		return v
+	}
+	zone := obj.zone
+	v := getAttrFromZone(attr, zone)
+	if obj.attr == nil {
+		obj.attr = make(map[string]string)
+	}
+	obj.attr[attr] = v
+	return v
+}
+
 func (obj *Network) getAttr(attr string) string {
-    return getAttrFromZone(attr, obj.zone);
+    return getAttrFromNetwork(attr, obj);
 }
 func (obj *Subnet) getAttr(attr string) string {
-    return getAttrFromZone(attr, obj.network.zone);
+    return getAttrFromNetwork(attr, obj.network);
 }
 func (obj *Interface) getAttr(attr string) string {
-    return getAttrFromZone(attr, obj.network.zone);
+    return getAttrFromNetwork(attr, obj.network);
 }
 
 /*########################################################################
@@ -176,10 +197,7 @@ var duplicateRules [][2]*ExpandedRule
 // Returns true, if overlap should be ignored.
 func checkAttrOverlaps(service, oservice *Service, rule *ExpandedRule) bool {
 	srcAttr := rule.src.getAttr("overlaps")
-	var dstAttr string
-	if srcAttr != "" {
-		dstAttr = rule.dst.getAttr("overlaps")
-	}
+	dstAttr := rule.dst.getAttr("overlaps")
 	overlapsUsed := func() bool {
 		for _, overlap := range service.overlaps {
 			if oservice == overlap {
@@ -199,7 +217,7 @@ func checkAttrOverlaps(service, oservice *Service, rule *ExpandedRule) bool {
 		}
 		return true
 	}
-	if srcAttr == "ok" && dstAttr == "ok" {
+	if srcAttr == "ok" || dstAttr == "ok" {
 		return true
 	}
 	return false

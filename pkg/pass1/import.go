@@ -178,6 +178,7 @@ func convNetwork(x xAny) *Network {
 	n := new(Network)
 	m["ref"] = n
 	n.setCommon(m)
+	n.attr = convAttr(m)
 	if m["mask"] != nil {
 		n.mask = m["mask"].([]byte)
 	}

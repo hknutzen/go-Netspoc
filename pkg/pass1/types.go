@@ -42,6 +42,7 @@ type natMap map[string]*Network
 
 type Network struct {
 	ipObj
+	attr       map[string]string
 	mask       net.IPMask
 	subnets    []*Subnet
 	interfaces []*Interface
