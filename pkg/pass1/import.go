@@ -199,6 +199,15 @@ func convNetwork(x xAny) *Network {
 	n.ipV6 = getBool(m["ipv6"])
 	n.natTag = getString(m["nat_tag"])
 	n.certId = getString(m["cert_id"])
+	if x, ok := m["filter_at"]; ok {
+		m := getMap(x)
+		p := make(map[int]bool)
+		for _, x := range m {
+			p[getInt(x)] = true
+		}
+		n.filterAt = p
+	}
+	n.hasIdHosts = getBool(m["has_id_hosts"])
 	n.radiusAttributes = convRadiusAttributes(m["radius_attributes"])
 	return n
 }
@@ -309,6 +318,7 @@ func convRouter(x xAny) *Router {
 	r.model   = convModel(m["model"])
 	r.log     = getMapStringString(m["log"])
 	r.logDeny = getBool(m["log_deny"])
+	r.localMark = getInt(m["local_mark"])
 	r.interfaces = convInterfaces(m["interfaces"])
 	r.origInterfaces = convInterfaces(m["orig_interfaces"])
 	r.crosslinkInterfaces = convInterfaces(m["crosslink_interfaces"])
@@ -444,6 +454,7 @@ func convInterface(x xAny) *Interface {
 	i.rules = convRules(m["rules"])
 	i.intfRules = convRules(m["intf_rules"])
 	i.outRules = convRules(m["out_rules"])
+*/
 	if x, ok := m["id_rules"]; ok {
 		m := getMap(x)
 		n := make(map[string]*idInterface)
@@ -452,7 +463,6 @@ func convInterface(x xAny) *Interface {
 		}
 		i.idRules = n
 	}
-*/
 	i.toZone1 = convPathObj(m["to_zone1"])
 	i.zone = convZone(m["zone"])
 	return i
@@ -526,8 +536,8 @@ func convHardware(x xAny) *Hardware {
 		}
 		h.ioRules = n
 	}
-*/
 	h.subcmd = getStrings(m["subcmd"])
+*/
 	return h
 }
 func convHardwareList(x xAny) []*Hardware {
