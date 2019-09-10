@@ -450,11 +450,6 @@ func convInterface(x xAny) *Interface {
 		i.routes = n1
 	}
 	i.routing = convRouting(m["routing"])
-/*
-	i.rules = convRules(m["rules"])
-	i.intfRules = convRules(m["intf_rules"])
-	i.outRules = convRules(m["out_rules"])
-*/
 	if x, ok := m["id_rules"]; ok {
 		m := getMap(x)
 		n := make(map[string]*idInterface)
@@ -525,19 +520,6 @@ func convHardware(x xAny) *Hardware {
 	h.dstNatSet = convNatSet(m["dst_nat_set"])
 	h.needOutAcl = getBool(m["need_out_acl"])
 	h.noInAcl = getBool(m["no_in_acl"])
-/*	h.rules = convRules(m["rules"])
-	h.intfRules = convRules(m["intf_rules"])
-	h.outRules = convRules(m["out_rules"])
-	if x, ok := m["io_rules"]; ok {
-		m := getMap(x)
-		n := make(map[string]RuleList)
-		for out, rules := range m {
-			n[getString(out)] = convRules(rules)
-		}
-		h.ioRules = n
-	}
-	h.subcmd = getStrings(m["subcmd"])
-*/
 	return h
 }
 func convHardwareList(x xAny) []*Hardware {
