@@ -203,7 +203,7 @@ func convNetwork(x xAny) *Network {
 	if x, ok := m["filter_at"]; ok {
 		m := getMap(x)
 		p := make(map[int]bool)
-		for _, x := range m {
+		for x, _ := range m {
 			p[getInt(x)] = true
 		}
 		n.filterAt = p
