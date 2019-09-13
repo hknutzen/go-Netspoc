@@ -115,7 +115,6 @@ type pathObj interface{
 	isActivePath() bool
 	setActivePath()
 	clearActivePath()
-//	getReachablePart() map[int]bool
 	getDistance() int
 	getLoop() *loop
 	getNavi() map[pathObj]navigation
@@ -127,7 +126,6 @@ func (x *pathObjData) intfList() []*Interface { return x.interfaces }
 func (x *pathObjData) isActivePath() bool { return x.activePath }
 func (x *pathObjData) setActivePath() { x.activePath = true }
 func (x *pathObjData) clearActivePath() {x.activePath = false }
-// func (x *pathObjData) getReachablePart() map[int]bool { return x.reachablePart }
 func (x *pathObjData) getDistance() int {return x.distance }
 func (x *pathObjData) getLoop() *loop {	return x.loop }
 func (x *pathObjData) getNavi() map[pathObj]navigation { return x.navi }
@@ -166,7 +164,7 @@ func (obj *Interface) getPathNode() pathStore {
 
 		// Special handling needed if src or dst is interface
 		// which has pathrestriction attached.
-		if main.pathRestrict != nil /*|| main.reachableAt != nil*/ {
+		if main.pathRestrict != nil {
 			return main
 		} else {
 			return main.router
@@ -298,23 +296,6 @@ func clusterPathMark1(obj pathObj, inIntf *Interface, end pathObj, lPath *loopPa
 //    debug(" leave: in_intf->{name} -> end->{name}");
 		return true
 	}
-
-/*
-	// Stop exploration if optimized pathrestriction inhibits reaching end node.
-	// This is not grouped with other PR checks to avoid unneccessary execution.
-	if reachableAt := inIntf.reachableAt; reachableAt != nil {
-		if reachable := reachableAt[obj]; reachable != nil {
-			hasMark := end.getReachablePart()
-			for _, mark := range reachable {
-				if !hasMark[mark] {
-//             debug(" unreachable3: end_node->{name}",
-//                   " from in_intf->{name} to obj->{name}");
-					return false
-				}
-			}
-		}
-	}
-*/
 
 	// Mark current path for loop detection.
 	obj.setActivePath()
@@ -826,40 +807,6 @@ func clusterPathMark (startStore, endStore pathStore) bool {
 		}
 	}
 
-	/*
-	// Check whether valid paths are possible due to optimized pathrestrictions.
-	isReachable := func(intf *Interface, from, to pathObj) {
-		if intf == nil {
-			return
-		}
-		reachableAt := intf.reachableAt
-		if reachableAt == nil {
-			return
-		}
-
-		// Check, whether end node is reachable from enter-/start-interface.
-		// For enter-interfaces, just the direction towards loop is of interest,
-		// for start-interfaces, pathrestrictions in zone direction do not hold,
-		// hence check router direction only.
-		// Only one direction needs to be checked in both cases.
-		reachable := reachableAt[from]
-		if reachable == nil {
-			return
-		}
-		hasMark := to.getReachablePart()
-		for _, mark := range reachable {
-
-			// End node is not reachable via enter-interface.
-			if !hasMark[mark] {
-				success = false
-				return
-			}
-		}
-	}
-	isReachable(fromIn, from, to)
-	isReachable(toOut, to, from)
-   */
-
 	// Find loop paths via depth first search.
 	// Ignore path, if not valid due to pathrestrictions.
 	if success {
@@ -1002,7 +949,7 @@ func connectClusterPath(from, to pathObj, fromIn, toOut *Interface, fromStore, t
 		// Path starts inside or at border of current loop at router node.
 			startStore = fromStoreIntf
 		}
-	} else if fromIn != nil && (fromIn.pathRestrict != nil /*|| fromIn.reachableAt != nil*/) {
+	} else if fromIn != nil && fromIn.pathRestrict != nil {
 
 		// Loop is entered at pathrestricted interface.
 		startStore = fromIn
@@ -1028,7 +975,7 @@ func connectClusterPath(from, to pathObj, fromIn, toOut *Interface, fromStore, t
 		} else {
 			endStore = toStore
 		}
-	} else if toOut != nil && (toOut.pathRestrict != nil /*|| toOut.reachableAt != nil*/) {
+	} else if toOut != nil && toOut.pathRestrict != nil {
 		endStore = toOut
 	} else {
 		switch x := to.(type) {
@@ -1534,7 +1481,7 @@ func addPathrestictedInterfaces(path pathStore, obj NetOrRouter) []pathStore {
 	switch x := path.(type) {
 	case *Router:
 		for _, intf := range getIntf(x) {
-			if intf.pathRestrict != nil /*|| intf.reachableAt != nil */ {
+			if intf.pathRestrict != nil {
 				result = append(result, intf)
 			}
 		}
