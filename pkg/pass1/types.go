@@ -139,9 +139,10 @@ type Router struct {
 	hardware   []*Hardware
 	origHardware []*Hardware
 	origRouter *Router
+	primaryMark int
 	radiusAttributes map[string]string
-//	reachablePart map[int]bool
 	routingOnly bool
+	secondaryMark int
 	trustPoint string
 	vrfMembers []*Router
 	ipV6       bool
@@ -254,9 +255,13 @@ type Zone struct {
 	name     string
 	networks []*Network
 	attr     map[string]string
+	hasSecondary bool
+	hasNonPrimary bool
 	inArea   *Area
+	natDomain *NATDomain
 	partition     string
-//	reachablePart map[int]bool
+	primaryMark int
+	secondaryMark int
 	zoneCluster []*Zone
 }
 func (x *Zone) getName() string { return x.name }
@@ -265,6 +270,10 @@ type Area struct {
 	name     string
 	attr     map[string]string
 	inArea   *Area
+}
+
+type NATDomain struct {
+	natSet      natSet
 }
 
 type modifiers struct {

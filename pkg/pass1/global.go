@@ -25,5 +25,6 @@ var pathRules *PathRules
 
 var managedRouters []*Router
 var routingOnlyRouters []*Router
+var zones []*Zone
 
 var outDir string

@@ -628,6 +628,7 @@ func convZone(x xAny) *Zone {
 	z.inArea = convArea(m["in_area"])
 	z.interfaces = convInterfaces(m["interfaces"])
 	z.loop = convLoop(m["loop"])
+	z.natDomain = convNATDomain(m["nat_domain"])
 	z.partition = getString(m["partition"])
 	z.toZone1 = convInterface(m["to_zone1"])
 	z.zoneCluster = convZones(m["zone_cluster"])
@@ -643,6 +644,19 @@ func convZones(x xAny) []*Zone {
 		l[i] = convZone(x)
 	}
 	return l
+}
+
+func convNATDomain(x xAny) *NATDomain {
+	if x == nil {
+		return nil
+	}
+	m := getMap(x)
+	if r, ok := m["ref"]; ok {
+		return r.(*NATDomain)
+	}
+	d := new(NATDomain)
+	d.natSet = convNatSet(m["nat_set"])
+	return d
 }
 
 func convModifiers(x xAny) modifiers {
@@ -1013,5 +1027,6 @@ func ImportFromPerl () {
 	prtIP = convProto(m["prt_ip"])
 	routingOnlyRouters = convRouters(m["routing_only_routers"])
 	services = convServiceMap(m["services"])
+	zones = convZones(m["zones"])
 	xxrpInfo = convXxrpInfo(m["xxrp_info"])
 }
