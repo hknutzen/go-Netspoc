@@ -36,7 +36,7 @@ import (
 	"strings"
 	"time"
 	"github.com/hknutzen/go-Netspoc/pkg/err"
-	"github.com/hknutzen/go-Netspoc/pkg/file"
+	"github.com/hknutzen/go-Netspoc/pkg/fileop"
 )
 
 // Type for command line flag with value 0|1|warn
@@ -97,7 +97,7 @@ type Config struct {
 	ConcurrencyPass1             int
 	ConcurrencyPass2             int
 	IgnoreFiles                  *regexp.Regexp
-	Ipv6                         bool `flag:"ipv6 6"`
+	IPV6                         bool `flag:"ipv6 6"`
 	MaxErrors                    int  `flag:"max_errors m"`
 	Verbose                      bool `flag:"verbose v"`
 	TimeStamps                   bool `flag:"time_stamps t"`
@@ -173,7 +173,7 @@ func defaultOptions(fs *flag.FlagSet) *Config {
 		// - Editor backup files: emacs: *~
 		IgnoreFiles: regexp.MustCompile("^(CVS|RCS|\\.#.*|.*~)$"),
 		// Use IPv4 version as default
-		Ipv6: false,
+		IPV6: false,
 
 		// Set value to >= 2 to start concurrent processing.
 		ConcurrencyPass1: 1,
@@ -295,7 +295,7 @@ func parseFile(filename string, fs *flag.FlagSet) {
 
 func addConfigFromFile(inDir string, fs *flag.FlagSet) {
 	path := inDir + "/config"
-	if !file.IsRegular(path) {
+	if !fileop.IsRegular(path) {
 		return
 	}
 	parseFile(path, fs)

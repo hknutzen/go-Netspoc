@@ -38,7 +38,7 @@ import (
 	"github.com/hknutzen/go-Netspoc/pkg/err"
 	"github.com/hknutzen/go-Netspoc/pkg/diag"
 	"github.com/hknutzen/go-Netspoc/pkg/conf"
-	"github.com/hknutzen/go-Netspoc/pkg/file"
+	"github.com/hknutzen/go-Netspoc/pkg/fileop"
 	"github.com/hknutzen/go-Netspoc/pkg/jcode"
 )
 
@@ -2684,18 +2684,18 @@ func printCombined(config []string, routerData *routerData, outPath string) {
 // If identical files with extension .config and .rules
 // exist in directory .prev/, then use copy.
 func tryPrev(devicePath, dir, prev string) bool {
-	if !file.IsDir(prev) {
+	if !fileop.IsDir(prev) {
 		return false
 	}
 	prevFile := prev + "/" + devicePath
-	if !file.IsRegular(prevFile) {
+	if !fileop.IsRegular(prevFile) {
 		return false
 	}
 	codeFile := dir + "/" + devicePath
 	for _, ext := range [...]string{"config", "rules"} {
 		pass1name := codeFile + "." + ext
 		pass1prev := prevFile + "." + ext
-		if !file.IsRegular(pass1prev) {
+		if !fileop.IsRegular(pass1prev) {
 			return false
 		}
 		cmd := exec.Command("cmp", "-s", pass1name, pass1prev)

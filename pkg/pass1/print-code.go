@@ -12,7 +12,7 @@ import (
 	"strings"
 	"unicode"
 	"github.com/hknutzen/go-Netspoc/pkg/err"
-	"github.com/hknutzen/go-Netspoc/pkg/file"
+	"github.com/hknutzen/go-Netspoc/pkg/fileop"
 	"github.com/hknutzen/go-Netspoc/pkg/jcode"
 )
 
@@ -2301,7 +2301,7 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 // Make output directory available.
 // Move old content into subdirectory ".prev/" for reuse during pass 2.
 func checkOutputDir(dir string) {
-	if !file.IsDir(dir) {
+	if !fileop.IsDir(dir) {
 		e := os.Mkdir(dir, 0777)
 		if e != nil {
 			err.Fatal("Can't %v", e)
@@ -2310,11 +2310,11 @@ func checkOutputDir(dir string) {
 		os.Remove(dir + "/.devlist")
 
 		prev := dir + "/.prev"
-		if !file.IsDir(prev) {
-			oldFiles := file.Readdirnames(dir)
+		if !fileop.IsDir(prev) {
+			oldFiles := fileop.Readdirnames(dir)
 			if count := len(oldFiles); count > 0 {
-				if file.IsDir(dir + "/ipv6") {
-					v6files := file.Readdirnames(dir + "/ipv6")
+				if fileop.IsDir(dir + "/ipv6") {
+					v6files := fileop.Readdirnames(dir + "/ipv6")
 					count += len(v6files) - 1
 				}
 				info("Saving %d old files of \"%s\" to subdirectory \".prev\"",
@@ -2372,7 +2372,7 @@ func printCode (dir string) {
 			if router.ipV6 {
 				path = "ipv6/" + path
 				v6dir := dir + "/ipv6"
-				if !checkedV6Dir && !file.IsDir(v6dir) {
+				if !checkedV6Dir && !fileop.IsDir(v6dir) {
 					checkedV6Dir = true
 					e := os.Mkdir(v6dir, 0777)
 					if e != nil {
