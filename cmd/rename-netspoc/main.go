@@ -1,139 +1,43 @@
 package main
 
 import (
-	"os"
-	"io/ioutil"
-	"github.com/spf13/pflag"
 	"fmt"
-	"path/filepath"
+	"github.com/hknutzen/go-Netspoc/pkg/conf"
+	"github.com/hknutzen/go-Netspoc/pkg/diag"
+	"github.com/hknutzen/go-Netspoc/pkg/err"
+	"github.com/hknutzen/go-Netspoc/pkg/filetree"
+	"github.com/spf13/pflag"
+	"io/ioutil"
+	"os"
 	"regexp"
 	"strings"
-	"github.com/hknutzen/go-Netspoc/pkg/err"
-	"github.com/hknutzen/go-Netspoc/pkg/diag"
-	"github.com/hknutzen/go-Netspoc/pkg/conf"
-	fileop "github.com/hknutzen/go-Netspoc/pkg/file"
 )
 
-type fn func(string)
-
-var currentFile string
-
-// Read input from file and process it by function which is given as argument.
-func processFile (path string, parser fn){
-
-	content, e := ioutil.ReadFile(path)
-	if e != nil {
-		err.Fatal("Can't read %s: %s", path, e)
-	}
-	input := string(content)
-	currentFile = path
-	parser(input)
-}
-
-func processFileOrDir (path string, parser fn) {
-
-	// Handle toplevel file.
-	if fileop.IsDir(path) == false {
-		processFile(path, parser)
-		return;
-	} else {
-		// Handle toplevel Directory
-		files, err := ioutil.ReadDir(path)
-		for _, file := range files {
-			fmt.Println("FILE: " + file.Name())
-
-			// skip special files
-			if  (!file.Mode().IsDir() &&
-				(file.Name() == "config" || file.Name() == "raw" )) {
-				fmt.Printf("skipping %s\n", file.Name())
-				continue
-			}
-
-			//
-			hidden := regexp.MustCompile(`^\.`)
-			if (!file.Mode().IsDir() && hidden.MatchString(file.Name())) {
-				fmt.Printf("skipping %s\n", file.Name())
-				continue
-			}
-
-			// skip ignored files
-			ignore := conf.Conf.IgnoreFiles
-			if (!file.Mode().IsDir() && ignore.MatchString(file.Name())) {
-				fmt.Printf("skipping %s\n", file.Name())
-				continue
-			}
-
-			//			if file.Mode().IsDir() {
-			subpath := path + "/" + file.Name()
-				err = filepath.Walk(subpath,
-					func(subpath string, file os.FileInfo, err error) error {
-
-						// Error - handling
-						if err != nil {
-							fmt.Printf("prevent panic by handling failure accessing a path %q: %v\n", subpath, err)
-							return err
-						}
-
-						// ipv4/ipv6 subdir or file specification and private are not used
-						// within rename-netspoc
-
-						//skip hidden files
-						hidden := regexp.MustCompile(`^\.`)
-						if hidden.MatchString(file.Name()) {
-							fmt.Printf("skipping %s\n", file.Name())
-							return nil
-						}
-
-						// skip ignored files
-						ignore := conf.Conf.IgnoreFiles
-						if ignore.MatchString(file.Name()) {
-							fmt.Printf("skipping %s\n", file.Name())
-							return nil
-						}
-
-						fmt.Printf("visited: %q\n", subpath)
-						if fileop.IsDir(subpath) == false {
-							fmt.Println("processing file " + subpath)
-							processFile(subpath, parser)
-						}
-						return nil
-					})
-
-				if err != nil {
-					fmt.Printf("error walking the path %q: %v\n", subpath, err)
-				}
-//		}
-
-		}
-	}
-}
-
-
-var globalType = map[string]bool {
-	"router"          : true,
-	"network"         : true,
-	"host"            : true,
-	"any"             : true,
-	"group"           : true,
-	"area"            : true,
-	"service"         : true,
-	"owner"           : true,
-	"protocol"        : true,
-	"protocolgroup"   : true,
-	"pathrestriction" : true,
-	"nat"             : true,
-	"isakmp"          : true,
-	"ipsec"           : true,
-	"crypto"          : true,
+var globalType = map[string]bool{
+	"router":          true,
+	"network":         true,
+	"host":            true,
+	"any":             true,
+	"group":           true,
+	"area":            true,
+	"service":         true,
+	"owner":           true,
+	"protocol":        true,
+	"protocolgroup":   true,
+	"pathrestriction": true,
+	"nat":             true,
+	"isakmp":          true,
+	"ipsec":           true,
+	"crypto":          true,
 }
 
 // NAT is applied with bind_nat.
 // Owner is optionally referenced as sub_owner.
 // Interface definition uses network name.
-var aliases = map[string][]string {
-	"nat"     : {"bind_nat"},
-	"owner"   : {"sub_owner"},
-	"network" : {"interface"},
+var aliases = map[string][]string{
+	"nat":     {"bind_nat"},
+	"owner":   {"sub_owner"},
+	"network": {"interface"},
 }
 
 var subst = make(map[string]map[string]string)
@@ -159,17 +63,17 @@ func setupSubst(objType string, search string, replace string) {
 	}
 }
 
-func substitute (objType string, name string) string {
+func substitute(objType string, name string) string {
 	if objType == "host" && strings.HasPrefix(name, "id:") {
 		// ID host is extended by network name: host:id:a.b@c.d.net_name
 		parts := strings.Split(name, ".")
 		network := parts[len(parts)-1]
 		host := strings.Join(parts[:len(parts)-1], ".")
-		if replace, ok :=  subst["host"][host]; ok {
+		if replace, ok := subst["host"][host]; ok {
 			host = replace
 			name = host + "." + network
 		}
-		if replace, ok :=  subst["network"][network]; ok {
+		if replace, ok := subst["network"][network]; ok {
 			network = replace
 			name = host + "." + network
 		}
@@ -182,7 +86,7 @@ func substitute (objType string, name string) string {
 		if len(parts) > 2 {
 			ext = "." + parts[2]
 		}
-		if replace, ok :=  subst["router"][router]; ok {
+		if replace, ok := subst["router"][router]; ok {
 			router = replace
 			name = router + "." + network + ext
 		}
@@ -190,7 +94,7 @@ func substitute (objType string, name string) string {
 			network = replace
 			name = router + "." + network + ext
 		}
-	} else if replace, ok :=  subst[objType][name]; ok {
+	} else if replace, ok := subst[objType][name]; ok {
 		return replace
 	}
 	return name
@@ -210,7 +114,7 @@ func process(input string) (int, string) {
 	comma := regexp.MustCompile(`^\s*,\s*`)
 
 	// Match pattern in input and skip matched pattern.
-	match := func(pattern *regexp.Regexp) ([]string) {
+	match := func(pattern *regexp.Regexp) []string {
 		matches := pattern.FindStringSubmatch(input)
 		if matches == nil {
 			return nil
@@ -244,7 +148,7 @@ func process(input string) (int, string) {
 			}
 		} else if m := match(declaration); m != nil {
 			// Find next "type:name".
-			copy += m[1]+m[2]+m[3]
+			copy += m[1] + m[2] + m[3]
 			objType := m[2]
 			name := m[4]
 			new := substitute(objType, name)
@@ -254,7 +158,7 @@ func process(input string) (int, string) {
 			}
 		} else if m := match(list); m != nil {
 			// Find "type = name".
-			copy += m[1]+m[2]+m[3]
+			copy += m[1] + m[2] + m[3]
 			objType := m[2]
 			if subst[objType] != nil {
 				typelist = m[2]
@@ -270,13 +174,13 @@ func process(input string) (int, string) {
 	return changed, copy
 }
 
-func processInput (input string) {
-	count, copy := process(input)
+func processInput(input *filetree.Context) {
+	count, copy := process(input.Data)
 	if count == 0 {
 		return
 	}
 
-   path := currentFile;
+	path := input.Path
 	diag.Info("%d changes in %s", count, path)
 	e := os.Remove(path)
 	if e != nil {
@@ -293,7 +197,7 @@ func processInput (input string) {
 	file.Close()
 }
 
-func getTypeAndName(objName string) (string, string){
+func getTypeAndName(objName string) (string, string) {
 	r := regexp.MustCompile(`^(\w+):(.*)$`)
 	res := r.FindStringSubmatch(objName)
 	if len(res) != 3 {
@@ -302,7 +206,7 @@ func getTypeAndName(objName string) (string, string){
 	return res[1], res[2]
 }
 
-func setupPattern (pattern []string) {
+func setupPattern(pattern []string) {
 	for len(pattern) > 0 {
 		old := pattern[0]
 		if len(pattern) < 2 {
@@ -329,7 +233,7 @@ func readPattern(path string) {
 	if len(pattern) == 0 {
 		err.Fatal("Missing pattern in %s", path)
 	}
-	setupPattern(pattern);
+	setupPattern(pattern)
 }
 
 func main() {
@@ -362,9 +266,9 @@ func main() {
 		setupPattern(args[1:])
 	}
 	// Initialize Conf, especially attribute IgnoreFiles.
-	dummyArgs := []string{ fmt.Sprintf("--verbose=%v", !*quiet) }
+	dummyArgs := []string{fmt.Sprintf("--verbose=%v", !*quiet)}
 	conf.ConfigFromArgsAndFile(dummyArgs, inPath)
 
 	// Do substitution.
-	processFileOrDir(inPath, processInput)
+	filetree.Process(inPath, processInput)
 }
