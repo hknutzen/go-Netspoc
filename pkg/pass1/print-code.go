@@ -2317,7 +2317,7 @@ func checkOutputDir(dir string) {
 					v6files := fileop.Readdirnames(dir + "/ipv6")
 					count += len(v6files) - 1
 				}
-				info("Saving %d old files of \"%s\" to subdirectory \".prev\"",
+				info("Saving %d old files of '%s' to subdirectory '.prev'",
 					count, dir)
 
 				// Try to remove file or symlink with same name.
