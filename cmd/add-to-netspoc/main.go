@@ -166,13 +166,16 @@ func process(input string) (int, string) {
 				// Add new entry to separate line with same indentation.
 				var m []string
 				var prefix string
-				if idx := strings.LastIndex(copy, "\n"); idx != -1 {
+				idx := strings.LastIndex(copy, "\n")
+				if idx != -1 {
 					prefix = copy[idx+1:]
-					re := regexp.MustCompile(
-						`^(?:[ \t]*[-\w\p{L}:]+[ \t]*=)?[ \t]*$`)
-					if re.MatchString(prefix) {
-						m = match(`^((?:[ \t]*[,;])?)([ \t]*(?:[#].*)?)\n`)
-					}
+				} else {
+					prefix = copy
+				}
+				re := regexp.MustCompile(
+					`^(?:[ \t]*[-\w\p{L}:]+[ \t]*=)?[ \t]*$`)
+				if re.MatchString(prefix) {
+					m = match(`^((?:[ \t]*[,;])?)([ \t]*(?:[#].*)?)\n`)
 				}
 				if m != nil {
 					delim, comment := m[1], m[2]
