@@ -319,5 +319,5 @@ func main() {
 	conf.ConfigFromArgsAndFile(dummyArgs, path)
 
 	// Do substitution.
-	filetree.Process(path, processInput)
+	filetree.Walk(path, processInput)
 }

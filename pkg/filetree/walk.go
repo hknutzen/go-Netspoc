@@ -29,7 +29,7 @@ func processFile(input *Context, fn parser) {
 	fn(input)
 }
 
-func Process(fname string, fn parser) {
+func Walk(fname string, fn parser) {
 	input := &Context{ipV6: conf.Conf.IPV6}
 
 	// Handle toplevel file.
