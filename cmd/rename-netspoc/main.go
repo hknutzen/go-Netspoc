@@ -2,9 +2,9 @@ package main
 
 import (
 	"fmt"
+	"github.com/hknutzen/go-Netspoc/pkg/abort"
 	"github.com/hknutzen/go-Netspoc/pkg/conf"
 	"github.com/hknutzen/go-Netspoc/pkg/diag"
-	"github.com/hknutzen/go-Netspoc/pkg/err"
 	"github.com/hknutzen/go-Netspoc/pkg/filetree"
 	"github.com/spf13/pflag"
 	"io/ioutil"
@@ -45,7 +45,7 @@ var subst = make(map[string]map[string]string)
 // Fill subst with mapping from search to replace for given type.
 func setupSubst(objType string, search string, replace string) {
 	if !globalType[objType] {
-		err.Fatal("Unknown type %s", objType)
+		abort.Msg("Unknown type %s", objType)
 	}
 	addSubst := func(objType, search, replace string) {
 		subMap, ok := subst[objType]
@@ -182,17 +182,17 @@ func processInput(input *filetree.Context) {
 
 	path := input.Path
 	diag.Info("%d changes in %s", count, path)
-	e := os.Remove(path)
-	if e != nil {
-		err.Fatal("Can't remove %s: %s", path, e)
+	err := os.Remove(path)
+	if err != nil {
+		abort.Msg("Can't remove %s: %s", path, err)
 	}
-	file, e := os.Create(path)
-	if e != nil {
-		err.Fatal("Can't create %s: %s", path, e)
+	file, err := os.Create(path)
+	if err != nil {
+		abort.Msg("Can't create %s: %s", path, err)
 	}
-	_, e = file.WriteString(copy)
-	if e != nil {
-		err.Fatal("Can't write to %s: %s", path, e)
+	_, err = file.WriteString(copy)
+	if err != nil {
+		abort.Msg("Can't write to %s: %s", path, err)
 	}
 	file.Close()
 }
@@ -201,7 +201,7 @@ func getTypeAndName(objName string) (string, string) {
 	r := regexp.MustCompile(`^(\w+):(.*)$`)
 	res := r.FindStringSubmatch(objName)
 	if len(res) != 3 {
-		err.Fatal("Missing type in '%s'", objName)
+		abort.Msg("Missing type in '%s'", objName)
 	}
 	return res[1], res[2]
 }
@@ -210,7 +210,7 @@ func setupPattern(pattern []string) {
 	for len(pattern) > 0 {
 		old := pattern[0]
 		if len(pattern) < 2 {
-			err.Fatal("Missing replace string for '%s'", old)
+			abort.Msg("Missing replace string for '%s'", old)
 		}
 		new := pattern[1]
 		pattern = pattern[2:]
@@ -218,20 +218,20 @@ func setupPattern(pattern []string) {
 		oldType, oldName := getTypeAndName(old)
 		newType, newName := getTypeAndName(new)
 		if oldType != newType {
-			err.Fatal("Types must be identical in\n - %s\n - %s", old, new)
+			abort.Msg("Types must be identical in\n - %s\n - %s", old, new)
 		}
 		setupSubst(oldType, oldName, newName)
 	}
 }
 
 func readPattern(path string) {
-	bytes, e := ioutil.ReadFile(path)
-	if e != nil {
-		err.Fatal("Can't %s", e)
+	bytes, err := ioutil.ReadFile(path)
+	if err != nil {
+		abort.Msg("Can't %s", err)
 	}
 	pattern := strings.Fields(string(bytes))
 	if len(pattern) == 0 {
-		err.Fatal("Missing pattern in %s", path)
+		abort.Msg("Missing pattern in %s", path)
 	}
 	setupPattern(pattern)
 }

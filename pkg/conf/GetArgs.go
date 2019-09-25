@@ -35,7 +35,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"github.com/hknutzen/go-Netspoc/pkg/err"
+	"github.com/hknutzen/go-Netspoc/pkg/abort"
 	"github.com/hknutzen/go-Netspoc/pkg/fileop"
 )
 
@@ -214,7 +214,7 @@ func defaultOptions(fs *flag.FlagSet) *Config {
 func parseArgs() (string, string) {
 	mainFile := flag.Arg(0)
 	if mainFile == "" || flag.Arg(2) != "" {
-		err.Fatal("Expected 2 args, got %v", flag.Args())
+		abort.Msg("Expected 2 args, got %v", flag.Args())
 		flag.Usage()
 		os.Exit(2)
 	}
@@ -235,9 +235,9 @@ func parseArgs() (string, string) {
 // Trailing ";" is optional.
 // Comment lines starting with "#" are ignored.
 func readConfig(filename string) map[string]string {
-	bytes, e := ioutil.ReadFile(filename)
-	if e != nil {
-		err.Fatal("Failed to read config file %s: %s", filename, e)
+	bytes, err := ioutil.ReadFile(filename)
+	if err != nil {
+		abort.Msg("Failed to read config file %s: %s", filename, err)
 	}
 	lines := strings.Split(string(bytes), "\n")
 	result := make(map[string]string)
@@ -248,7 +248,7 @@ func readConfig(filename string) map[string]string {
 		}
 		parts := strings.Split(line, "=")
 		if len(parts) != 2 {
-			err.Fatal("Unexpected line in %s: %s", filename, line)
+			abort.Msg("Unexpected line in %s: %s", filename, line)
 		}
 		key, val := parts[0], parts[1]
 		key = strings.TrimSpace(key)
@@ -282,14 +282,14 @@ func parseFile(filename string, fs *flag.FlagSet) {
 		if isSet[f] {
 			return
 		}
-		e := f.Value.Set(val)
-		if e != nil {
-			err.Fatal("Invalid value for %s in %s: %s", f.Name, filename, val)
+		err := f.Value.Set(val)
+		if err != nil {
+			abort.Msg("Invalid value for %s in %s: %s", f.Name, filename, val)
 		}
 	})
 
 	for name := range config {
-		err.Fatal("Invalid keyword in %s: %s", filename, name)
+		abort.Msg("Invalid keyword in %s: %s", filename, name)
 	}
 }
 

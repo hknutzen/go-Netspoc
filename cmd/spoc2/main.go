@@ -35,9 +35,9 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"github.com/hknutzen/go-Netspoc/pkg/err"
-	"github.com/hknutzen/go-Netspoc/pkg/diag"
+	"github.com/hknutzen/go-Netspoc/pkg/abort"
 	"github.com/hknutzen/go-Netspoc/pkg/conf"
+	"github.com/hknutzen/go-Netspoc/pkg/diag"
 	"github.com/hknutzen/go-Netspoc/pkg/fileop"
 	"github.com/hknutzen/go-Netspoc/pkg/jcode"
 )
@@ -279,7 +279,7 @@ func orderRanges(protocol string, prt2obj name2Proto, up *proto) {
 			// aaaaa
 			//   bbbbbb
 			// uncoverable statement
-			err.Fatal(
+			abort.Msg(
 				"Unexpected overlapping ranges [%d-%d] [%d-%d]",
 				a.ports[0], a.ports[1], b.ports[0], b.ports[1])
 		}
@@ -2478,7 +2478,7 @@ func printObjectGroups(fd *os.File, aclInfo *aclInfo, model string) {
 			// Reject network with mask = 0 in group.
 			// This occurs if optimization didn't work correctly.
 			if size, _ := element.Mask.Size(); size == 0 {
-				err.Fatal("Unexpected network with mask 0 in object-group")
+				abort.Msg("Unexpected network with mask 0 in object-group")
 			}
 			adr := ciscoACLAddr(element, model)
 			if model == "NX-OS" {
@@ -2650,9 +2650,9 @@ func printACL(fd *os.File, aclInfo *aclInfo, routerData *routerData) {
 const aclMarker = "#insert "
 
 func printCombined(config []string, routerData *routerData, outPath string) {
-	fd, e := os.Create(outPath)
-	if e != nil {
-		err.Fatal("Can't open %s for writing: %v", outPath, e)
+	fd, err := os.Create(outPath)
+	if err != nil {
+		abort.Msg("Can't open %s for writing: %v", outPath, err)
 	}
 	aclLookup := make(map[string]*aclInfo)
 	for _, acl := range routerData.acls {
@@ -2666,7 +2666,7 @@ func printCombined(config []string, routerData *routerData, outPath string) {
 			name := line[len(aclMarker):]
 			aclInfo, ok := aclLookup[name]
 			if !ok {
-				err.Fatal("Unexpected ACL %s", name)
+				abort.Msg("Unexpected ACL %s", name)
 			}
 			printACL(fd, aclInfo, routerData)
 		} else {
@@ -2675,8 +2675,8 @@ func printCombined(config []string, routerData *routerData, outPath string) {
 		}
 	}
 
-	if e := fd.Close(); e != nil {
-		err.Fatal("Can't close %s: %v", outPath, e)
+	if err := fd.Close(); err != nil {
+		abort.Msg("Can't close %s: %v", outPath, err)
 	}
 }
 
@@ -2714,9 +2714,9 @@ func tryPrev(devicePath, dir, prev string) bool {
 }
 
 func readFileLines(filename string) []string {
-	fd, e := os.Open(filename)
-	if e != nil {
-		err.Fatal("Can't open %s for reading: %v", filename, e)
+	fd, err := os.Open(filename)
+	if err != nil {
+		abort.Msg("Can't open %s for reading: %v", filename, err)
 	}
 	result := make([]string, 0)
 	scanner := bufio.NewScanner(fd)
@@ -2724,8 +2724,8 @@ func readFileLines(filename string) []string {
 		line := scanner.Text()
 		result = append(result, line)
 	}
-	if e := scanner.Err(); e != nil {
-		err.Fatal("While reading device names: %v", e)
+	if err := scanner.Err(); err != nil {
+		abort.Msg("While reading device names: %v", err)
 	}
 	return result
 }
@@ -2801,12 +2801,12 @@ func applyConcurrent(deviceNamesFh *os.File, dir, prev string) {
 		waitAndCheck()
 	}
 
-	if e := scanner.Err(); e != nil {
-		err.Fatal("While reading device names: %v", e)
+	if err := scanner.Err(); err != nil {
+		abort.Msg("While reading device names: %v", err)
 	}
 
 	if errors > 0 {
-		err.Fatal("Failed")
+		abort.Msg("Failed")
 	}
 	if generated > 0 {
 		diag.Info("Generated files for %d devices", generated)
@@ -2825,10 +2825,10 @@ func pass2(dir string) {
 		fromPass1 = os.Stdin
 	} else {
 		devlist := dir + "/.devlist"
-		var e error
-		fromPass1, e = os.Open(devlist)
-		if e != nil {
-			err.Fatal("Can't open %s for reading: %v", devlist, e)
+		var err error
+		fromPass1, err = os.Open(devlist)
+		if err != nil {
+			abort.Msg("Can't open %s for reading: %v", devlist, err)
 		}
 	}
 
@@ -2836,9 +2836,9 @@ func pass2(dir string) {
 
 	// Remove directory '.prev' created by pass1
 	// or remove symlink '.prev' created by newpolicy.pl.
-	e := os.RemoveAll(prev)
-	if e != nil {
-		err.Fatal("Can't remove %s: %v", prev, e)
+	err := os.RemoveAll(prev)
+	if err != nil {
+		abort.Msg("Can't remove %s: %v", prev, err)
 	}
 }
 

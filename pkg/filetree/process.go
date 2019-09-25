@@ -6,8 +6,8 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"github.com/hknutzen/go-Netspoc/pkg/abort"
 	"github.com/hknutzen/go-Netspoc/pkg/conf"
-	"github.com/hknutzen/go-Netspoc/pkg/err"
 	"github.com/hknutzen/go-Netspoc/pkg/fileop"
 )
 
@@ -21,9 +21,9 @@ type parser func(*Context)
 
 // Read input from file and process it by function which is given as argument.
 func processFile(input *Context, fn parser) {
-	content, e := ioutil.ReadFile(input.Path)
-	if e != nil {
-		err.Fatal("Can't read %s: %s", input.Path, e)
+	content, err := ioutil.ReadFile(input.Path)
+	if err != nil {
+		abort.Msg("Can't read %s: %s", input.Path, err)
 	}
 	input.Data = string(content)
 	fn(input)
@@ -40,9 +40,9 @@ func Process(fname string, fn parser) {
 	}
 
 	// Handle toplevel Directory
-	files, e := ioutil.ReadDir(fname)
-	if e != nil {
-		panic(e)
+	files, err := ioutil.ReadDir(fname)
+	if err != nil {
+		panic(err)
 	}
 	ipvDir := "ipv6"
 	if conf.Conf.IPV6 {
@@ -57,11 +57,11 @@ func Process(fname string, fn parser) {
 			ignore.MatchString(base) {
 			continue
 		}
-		e = filepath.Walk(name,
-			func(fname string, file os.FileInfo, e error) error {
-				if e != nil {
+		err = filepath.Walk(name,
+			func(fname string, file os.FileInfo, err error) error {
+				if err != nil {
 					// Abort filepath.Walk.
-					return e
+					return err
 				}
 				copy := *input
 				input := &copy
@@ -77,7 +77,7 @@ func Process(fname string, fn parser) {
 				// Handle private directories and files.
 				if strings.HasSuffix(base, ".private") {
 					if input.private != "" {
-						err.Fatal("Nested private context is not supported:\n %s",
+						abort.Msg("Nested private context is not supported:\n %s",
 							fname);
 					}
 					input.private = base
@@ -94,8 +94,8 @@ func Process(fname string, fn parser) {
 				return nil
 			})
 
-		if e != nil {
-			err.Fatal("while walking path %q: %v\n", fname, e)
+		if err != nil {
+			abort.Msg("while walking path %q: %v\n", fname, err)
 		}
 	}
 }

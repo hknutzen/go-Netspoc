@@ -1,11 +1,11 @@
-package err
+package abort
 
 import (
 	"fmt"
 	"os"
 )
 
-func Fatal(format string, args ...interface{}) {
+func Msg(format string, args ...interface{}) {
 	string := "Error: " + fmt.Sprintf(format, args...)
 	fmt.Fprintln(os.Stderr, string)
 	fmt.Fprintln(os.Stderr, "Aborted")

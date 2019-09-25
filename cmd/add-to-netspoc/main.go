@@ -69,9 +69,9 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 
 import (
 	"fmt"
+	"github.com/hknutzen/go-Netspoc/pkg/abort"
 	"github.com/hknutzen/go-Netspoc/pkg/conf"
 	"github.com/hknutzen/go-Netspoc/pkg/diag"
-	"github.com/hknutzen/go-Netspoc/pkg/err"
 	"github.com/hknutzen/go-Netspoc/pkg/filetree"
 	"github.com/spf13/pflag"
 	"io/ioutil"
@@ -97,14 +97,14 @@ var addTo = make(map[string]string)
 func checkName(typedName string) {
 	pair := strings.SplitN(typedName, ":", 2)
 	if len(pair) != 2 {
-		err.Fatal("Missing type in %s", typedName)
+		abort.Msg("Missing type in %s", typedName)
 	}
 	if !validType[pair[0]] {
-		err.Fatal("Can't use type in %s", typedName)
+		abort.Msg("Can't use type in %s", typedName)
 	}
 	re := regexp.MustCompile(`[^-\w\p{L}.:\@\/\[\]]`)
 	if m := re.FindStringSubmatch(pair[1]); m != nil {
-		err.Fatal("Invalid character \"%s\" in typedName", m[0])
+		abort.Msg("Invalid character \"%s\" in typedName", m[0])
 	}
 }
 
@@ -245,17 +245,17 @@ func processInput(input *filetree.Context) {
 	}
 	path := input.Path
 	diag.Info("%d changes in %s", count, path)
-	e := os.Remove(path)
-	if e != nil {
-		err.Fatal("Can't remove %s: %s", path, e)
+	err := os.Remove(path)
+	if err != nil {
+		abort.Msg("Can't remove %s: %s", path, err)
 	}
-	file, e := os.Create(path)
-	if e != nil {
-		err.Fatal("Can't create %s: %s", path, e)
+	file, err := os.Create(path)
+	if err != nil {
+		abort.Msg("Can't create %s: %s", path, err)
 	}
-	_, e = file.WriteString(copy)
-	if e != nil {
-		err.Fatal("Can't write to %s: %s", path, e)
+	_, err = file.WriteString(copy)
+	if err != nil {
+		abort.Msg("Can't write to %s: %s", path, err)
 	}
 	file.Close()
 }
@@ -264,7 +264,7 @@ func setupPairs(pairs []string) {
 	for len(pairs) > 0 {
 		old := pairs[0]
 		if len(pairs) == 1 {
-			err.Fatal("Missing 2nd. element for '%s'", old)
+			abort.Msg("Missing 2nd. element for '%s'", old)
 		}
 		new := pairs[1]
 		pairs = pairs[2:]
@@ -273,13 +273,13 @@ func setupPairs(pairs []string) {
 }
 
 func readPairs(path string) {
-	bytes, e := ioutil.ReadFile(path)
-	if e != nil {
-		err.Fatal("Can't %s", e)
+	bytes, err := ioutil.ReadFile(path)
+	if err != nil {
+		abort.Msg("Can't %s", err)
 	}
 	pairs := strings.Fields(string(bytes))
 	if len(pairs) == 0 {
-		err.Fatal("Missing pairs in %s", path)
+		abort.Msg("Missing pairs in %s", path)
 	}
 	setupPairs(pairs)
 }

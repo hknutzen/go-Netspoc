@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
-	"github.com/hknutzen/go-Netspoc/pkg/err"
+	"github.com/hknutzen/go-Netspoc/pkg/abort"
 	"github.com/hknutzen/go-Netspoc/pkg/fileop"
 	"github.com/hknutzen/go-Netspoc/pkg/jcode"
 )
@@ -2302,9 +2302,9 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 // Move old content into subdirectory ".prev/" for reuse during pass 2.
 func checkOutputDir(dir string) {
 	if !fileop.IsDir(dir) {
-		e := os.Mkdir(dir, 0777)
-		if e != nil {
-			err.Fatal("Can't %v", e)
+		err := os.Mkdir(dir, 0777)
+		if err != nil {
+			abort.Msg("Can't %v", err)
 		}
 	} else {
 		os.Remove(dir + "/.devlist")
@@ -2322,16 +2322,16 @@ func checkOutputDir(dir string) {
 
 				// Try to remove file or symlink with same name.
 				os.Remove(prev)
-				e := os.Mkdir(prev, 0777)
-				if e != nil {
-					err.Fatal("Can't %v", e)
+				err := os.Mkdir(prev, 0777)
+				if err != nil {
+					abort.Msg("Can't %v", err)
 				}
 				for i, name := range oldFiles {
 					oldFiles[i] = dir + "/" + name
 				}
 				cmd := exec.Command("mv", append(oldFiles, prev)...)
-				if e = cmd.Run(); e != nil {
-					err.Fatal("Can't mv old files to prev: %v", e)
+				if err = cmd.Run(); err != nil {
+					abort.Msg("Can't mv old files to prev: %v", err)
 				}
 			}
 		}
@@ -2347,10 +2347,10 @@ func printCode (dir string) {
 		toPass2 = os.Stdout
 	} else {
 		devlist := dir + "/.devlist"
-		var e error
-		toPass2, e = os.Create(devlist)
-		if e != nil {
-			err.Fatal("Can't %v", e)
+		var err error
+		toPass2, err = os.Create(devlist)
+		if err != nil {
+			abort.Msg("Can't %v", err)
 		}
 	}
 
@@ -2374,18 +2374,18 @@ func printCode (dir string) {
 				v6dir := dir + "/ipv6"
 				if !checkedV6Dir && !fileop.IsDir(v6dir) {
 					checkedV6Dir = true
-					e := os.Mkdir(v6dir, 0777)
-					if e != nil {
-						err.Fatal("Can't %v", e)
+					err := os.Mkdir(v6dir, 0777)
+					if err != nil {
+						abort.Msg("Can't %v", err)
 					}
 				}
 			}
 
 			// File for router config without ACLs.
 			configFile := dir + "/" + path + ".config"
-			fd, e := os.Create(configFile)
-			if e != nil {
-				err.Fatal("Can't %v", e)
+			fd, err := os.Create(configFile)
+			if err != nil {
+				abort.Msg("Can't %v", err)
 			}
 			model := router.model
 			commentChar := model.CommentChar
@@ -2436,20 +2436,20 @@ func printCode (dir string) {
 
 			header("END", deviceName)
 			fmt.Fprintln(fd)
-			if e := fd.Close(); e != nil {
-				err.Fatal("Can't %v", e)
+			if err := fd.Close(); err != nil {
+				abort.Msg("Can't %v", err)
 			}
 
 			// Print ACLs in machine independent format into separate file.
 			// Collect ACLs from VRF parts.
 			aclFile := dir + "/" + path + ".rules"
-			aclFd, e := os.Create(aclFile)
-			if e != nil {
-				err.Fatal("Can't %v", e)
+			aclFd, err := os.Create(aclFile)
+			if err != nil {
+				abort.Msg("Can't %v", err)
 			}
 			printAcls(aclFd, vrfMembers)
-			if e := aclFd.Close(); e != nil {
-				err.Fatal("Can't %v", e)
+			if err := aclFd.Close(); err != nil {
+				abort.Msg("Can't %v", err)
 			}
 
 			// Send device name to pass 2, showing that processing for this
