@@ -28,20 +28,21 @@ func matchIp(ip, i net.IP, m net.IPMask) bool {
 // Otherwise a rules is implemented typical.
 //#############################################################################
 
-// Mark security zone zone with mark and
-// additionally mark all security zones
+// Mark security zone zone and additionally mark all security zones
 // which are connected with zone by secondary packet filters.
 func markSecondary(zone *Zone, mark int) {
 	zone.secondaryMark = mark
 
-//    debug("zone->{name} mark");
+//	debug("%d %s", mark, zone.name);
 	for _, inInterface := range zone.interfaces {
 		if inInterface.mainInterface != nil {
 			continue
 		}
 		router := inInterface.router
-		if router.managed != "secondary" && router.managed != "local" {
-			continue
+		if m := router.managed; m != "" {
+			if m != "secondary" && m != "local" {
+				continue
+			}
 		}
 		zone.hasSecondary = true
 		if router.secondaryMark != 0 {
@@ -289,10 +290,14 @@ func checkConflict(conflict map[conflictKey]*conflictInfo) {
 					} else {
 						rule1.someNonSecondary = false
 					}
-//             my name1 = rule1->{rule}->{service}->{name} || '';
-//             debug "name1 what";
-//             debug print_rule rule1;
-//             debug "obj1->{name} < supernet->{name}";
+/*					name1 := ""
+					if s := rule1.rule.service; s != nil {
+						name1 = s.name
+					}
+					debug("%s isSrc:%v", name1, isSrc)
+					debug(rule1.print())
+					debug("%s < %s", network.name, supernet.name)
+*/
 					continue RULE
 				}
 			}
