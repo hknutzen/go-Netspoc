@@ -1027,6 +1027,7 @@ func ImportFromPerl () {
 	prtIP = convProto(m["prt_ip"])
 	routingOnlyRouters = convRouters(m["routing_only_routers"])
 	services = convServiceMap(m["services"])
-	zones = convZones(m["zones"])
+	version = getString(m["version"])
 	xxrpInfo = convXxrpInfo(m["xxrp_info"])
+	zones = convZones(m["zones"])
 }

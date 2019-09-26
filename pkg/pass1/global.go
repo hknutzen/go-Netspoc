@@ -4,7 +4,7 @@ import (
 	"time"
 )
 
-var version = "devel"
+var version string
 
 var config Config
 
