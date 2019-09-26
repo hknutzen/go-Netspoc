@@ -26,6 +26,8 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 
 import (
 	"fmt"
+	"github.com/hknutzen/go-Netspoc/pkg/abort"
+	"github.com/hknutzen/go-Netspoc/pkg/fileop"
 	"github.com/octago/sflags"
 	"github.com/octago/sflags/gen/gpflag"
 	flag "github.com/spf13/pflag"
@@ -35,8 +37,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"github.com/hknutzen/go-Netspoc/pkg/abort"
-	"github.com/hknutzen/go-Netspoc/pkg/fileop"
 )
 
 // Type for command line flag with value 0|1|warn
@@ -301,7 +301,7 @@ func addConfigFromFile(inDir string, fs *flag.FlagSet) {
 	parseFile(path, fs)
 }
 
-func setStartTime () {
+func setStartTime() {
 	if Conf.StartTime != 0 {
 		StartTime = time.Unix(Conf.StartTime, 0)
 	} else {

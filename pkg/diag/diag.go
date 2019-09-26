@@ -2,9 +2,9 @@ package diag
 
 import (
 	"fmt"
+	"github.com/hknutzen/go-Netspoc/pkg/conf"
 	"os"
 	"time"
-	"github.com/hknutzen/go-Netspoc/pkg/conf"
 )
 
 func Info(format string, args ...interface{}) {

@@ -2,8 +2,8 @@ package pass1
 
 import (
 	"fmt"
-	"io/ioutil"
 	"github.com/Sereal/Sereal/Go/sereal"
+	"io/ioutil"
 	"net"
 	"os"
 	"strconv"
@@ -299,7 +299,6 @@ func convLoop(x xAny) *loop {
 	return l
 }
 
-
 func convRouter(x xAny) *Router {
 	if x == nil {
 		return nil
@@ -316,8 +315,8 @@ func convRouter(x xAny) *Router {
 	r.semiManaged = getBool(m["semi_managed"])
 	r.routingOnly = getBool(m["routing_only"])
 	r.adminIP = getStrings(m["admin_ip"])
-	r.model   = convModel(m["model"])
-	r.log     = getMapStringString(m["log"])
+	r.model = convModel(m["model"])
+	r.log = getMapStringString(m["log"])
 	r.logDeny = getBool(m["log_deny"])
 	r.localMark = getInt(m["local_mark"])
 	r.interfaces = convInterfaces(m["interfaces"])
@@ -369,7 +368,6 @@ func convRouters(x xAny) []*Router {
 	}
 	return routers
 }
-
 
 func convPathRestrict(x xAny) *pathRestriction {
 	if x == nil {
@@ -579,8 +577,7 @@ func convSomeObjects(x xAny) []someObj {
 	return objects
 }
 
-var attrList []string =
-	[]string{"overlaps", "unknown_owner", "multi_owner", "has_unenforceable"}
+var attrList []string = []string{"overlaps", "unknown_owner", "multi_owner", "has_unenforceable"}
 
 func convAttr(m xMap) map[string]string {
 	var result map[string]string
@@ -743,7 +740,7 @@ func convProtoMap(x xAny) map[string]*proto {
 	return n
 }
 
-func convProtoOrName (x xAny) protoOrName {
+func convProtoOrName(x xAny) protoOrName {
 	switch u := x.(type) {
 	case xSlice, *xSlice:
 		return getStrings(x)
@@ -754,7 +751,7 @@ func convProtoOrName (x xAny) protoOrName {
 	}
 	return nil
 }
-func convProtoOrNames (x xAny) []protoOrName {
+func convProtoOrNames(x xAny) []protoOrName {
 	a := getSlice(x)
 	list := make([]protoOrName, len(a))
 	for i, x := range a {
@@ -977,19 +974,19 @@ func convIsakmp(x xAny) *Isakmp {
 func convConfig(x xAny) Config {
 	m := getMap(x)
 	c := Config{
-		Verbose: getBool(m["verbose"]),
-		TimeStamps: getBool(m["time_stamps"]),
-		Pipe: getBool(m["pipe"]),
-		MaxErrors:  getInt(m["max_errors"]),
-		CheckDuplicateRules: getString(m["check_duplicate_rules"]),
-		CheckRedundantRules: getString(m["check_redundant_rules"]),
+		Verbose:                  getBool(m["verbose"]),
+		TimeStamps:               getBool(m["time_stamps"]),
+		Pipe:                     getBool(m["pipe"]),
+		MaxErrors:                getInt(m["max_errors"]),
+		CheckDuplicateRules:      getString(m["check_duplicate_rules"]),
+		CheckRedundantRules:      getString(m["check_redundant_rules"]),
 		CheckFullyRedundantRules: getString(m["check_fully_redundant_rules"]),
-		autoDefaultRoute: getBool(m["auto_default_route"]),
+		autoDefaultRoute:         getBool(m["auto_default_route"]),
 	}
 	return c
 }
 
-func ImportFromPerl () {
+func ImportFromPerl() {
 	var bytes []byte
 	var err error
 	if len(os.Args) > 1 {

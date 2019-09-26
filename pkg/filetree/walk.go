@@ -1,20 +1,20 @@
 package filetree
 
 import (
+	"github.com/hknutzen/go-Netspoc/pkg/abort"
+	"github.com/hknutzen/go-Netspoc/pkg/conf"
+	"github.com/hknutzen/go-Netspoc/pkg/fileop"
 	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
-	"github.com/hknutzen/go-Netspoc/pkg/abort"
-	"github.com/hknutzen/go-Netspoc/pkg/conf"
-	"github.com/hknutzen/go-Netspoc/pkg/fileop"
 )
 
 type Context struct {
-	Path string
-	Data string
-	ipV6 bool
+	Path    string
+	Data    string
+	ipV6    bool
 	private string
 }
 type parser func(*Context)
@@ -36,7 +36,7 @@ func Walk(fname string, fn parser) {
 	if !fileop.IsDir(fname) {
 		input.Path = fname
 		processFile(input, fn)
-		return;
+		return
 	}
 
 	// Handle toplevel Directory
@@ -78,10 +78,10 @@ func Walk(fname string, fn parser) {
 				if strings.HasSuffix(base, ".private") {
 					if input.private != "" {
 						abort.Msg("Nested private context is not supported:\n %s",
-							fname);
+							fname)
 					}
 					input.private = base
-            }
+				}
 
 				// Skip hidden and ignored file.
 				if base[0] == '.' || ignore.MatchString(base) {

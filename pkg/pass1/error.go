@@ -50,12 +50,12 @@ func warnMsg(format string, args ...interface{}) {
 	fmt.Fprintln(os.Stderr, string)
 }
 
-func warnOrErrMsg (errType, format string, args ...interface{}) {
+func warnOrErrMsg(errType, format string, args ...interface{}) {
 	if errType == "warn" {
-        warnMsg(format, args...)
-    } else {
-        errMsg(format, args...)
-    }
+		warnMsg(format, args...)
+	} else {
+		errMsg(format, args...)
+	}
 }
 
 func progress(msg string) {

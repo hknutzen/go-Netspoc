@@ -1,8 +1,8 @@
 package main
 
 import (
-	"os"
 	"github.com/hknutzen/go-Netspoc/pkg/pass1"
+	"os"
 )
 
 func main() {

@@ -152,13 +152,13 @@ func getAttrFromNetwork(attr string, obj *Network) string {
 }
 
 func (obj *Network) getAttr(attr string) string {
-    return getAttrFromNetwork(attr, obj);
+	return getAttrFromNetwork(attr, obj)
 }
 func (obj *Subnet) getAttr(attr string) string {
-    return getAttrFromNetwork(attr, obj.network);
+	return getAttrFromNetwork(attr, obj.network)
 }
 func (obj *Interface) getAttr(attr string) string {
-    return getAttrFromNetwork(attr, obj.network);
+	return getAttrFromNetwork(attr, obj.network)
 }
 
 /*########################################################################
@@ -270,7 +270,7 @@ func collectDuplicateRules(rule, other *ExpandedRule) {
 type twoNames [2]string
 type namePairs []twoNames
 
-func (s namePairs)sort() {
+func (s namePairs) sort() {
 	sort.Slice(s, func(i, j int) bool {
 		switch strings.Compare(s[i][0], s[j][0]) {
 		case -1:
@@ -282,7 +282,7 @@ func (s namePairs)sort() {
 	})
 }
 
-func showDuplicateRules () {
+func showDuplicateRules() {
 	if duplicateRules == nil {
 		return
 	}
@@ -302,7 +302,7 @@ func showDuplicateRules () {
 	for _, pair := range namePairs {
 		sName, oName := pair[0], pair[1]
 		rules := sNames2Duplicate[pair]
-		msg := "Duplicate rules in " + sName + " and " + oName + ":";
+		msg := "Duplicate rules in " + sName + " and " + oName + ":"
 		for _, rule := range rules {
 			msg += "\n  " + rule.print()
 		}
@@ -358,10 +358,10 @@ func showRedundantRules() {
 	for _, pair := range namePairs {
 		sName, oName := pair[0], pair[1]
 		rulePairs := sNames2Redundant[pair]
-		msg := "Redundant rules in " + sName + " compared to " + oName + ":\n  ";
+		msg := "Redundant rules in " + sName + " compared to " + oName + ":\n  "
 		var list []string
 		for _, pair := range rulePairs {
-			list = append(list, pair[0].print() + "\n< " + pair[1].print())
+			list = append(list, pair[0].print()+"\n< "+pair[1].print())
 		}
 		sort.Strings(list)
 		msg += strings.Join(list, "\n  ")
@@ -389,13 +389,13 @@ func showFullyRedundantRules() {
 		if ruleCount == 0 {
 			continue
 		}
-		if service.duplicateCount + service.redundantCount != ruleCount {
+		if service.duplicateCount+service.redundantCount != ruleCount {
 			continue
 		}
 		for service := range service.hasSameDupl {
 			keep[service] = true
 		}
-		warnOrErrMsg(action, service.name + " is fully redundant")
+		warnOrErrMsg(action, service.name+" is fully redundant")
 	}
 }
 
@@ -616,7 +616,7 @@ func findRedundantRules(cmpHash, chgHash ruleTree) int {
 
 func CheckRedundantRules() {
 	progress("Checking for redundant rules")
-	count  := 0
+	count := 0
 	dcount := 0
 	rcount := 0
 
@@ -661,7 +661,7 @@ func CheckRedundantRules() {
 			count += len(expandedRules)
 			ruleTree, deleted := buildRuleTree(expandedRules)
 			dcount += deleted
-			setLocalPrtRelation(rules);
+			setLocalPrtRelation(rules)
 			rcount += findRedundantRules(ruleTree, ruleTree)
 		}
 	}

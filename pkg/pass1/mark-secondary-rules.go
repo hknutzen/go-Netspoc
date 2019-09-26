@@ -33,7 +33,7 @@ func matchIp(ip, i net.IP, m net.IPMask) bool {
 func markSecondary(zone *Zone, mark int) {
 	zone.secondaryMark = mark
 
-//	debug("%d %s", mark, zone.name);
+	//	debug("%d %s", mark, zone.name);
 	for _, inInterface := range zone.interfaces {
 		if inInterface.mainInterface != nil {
 			continue
@@ -87,9 +87,13 @@ func markPrimary(zone *Zone, mark int) {
 			if outInterface == inInterface {
 				continue
 			}
-			if outInterface.mainInterface != nil { continue }
+			if outInterface.mainInterface != nil {
+				continue
+			}
 			nextZone := outInterface.zone
-			if nextZone.primaryMark != 0 { continue }
+			if nextZone.primaryMark != 0 {
+				continue
+			}
 			markPrimary(nextZone, mark)
 		}
 	}
@@ -118,7 +122,7 @@ func getZones(path pathStore, list []someObj) []*Zone {
 	return nil
 }
 
-func haveDifferentMarks(srcZones, dstZones []*Zone, getMark func(*Zone)int) bool {
+func haveDifferentMarks(srcZones, dstZones []*Zone, getMark func(*Zone) int) bool {
 	srcMarks := make(map[int]bool)
 	for _, z := range srcZones {
 		srcMarks[getMark(z)] = true
@@ -132,15 +136,15 @@ func haveDifferentMarks(srcZones, dstZones []*Zone, getMark func(*Zone)int) bool
 }
 
 type conflictKey = struct {
-	isSrc bool
+	isSrc     bool
 	isPrimary bool
-	mark int
-	zone *Zone
+	mark      int
+	zone      *Zone
 }
 
 type conflictInfo = struct {
 	supernets map[*Network]bool
-	rules []*Rule
+	rules     []*Rule
 }
 
 // Collect conflicting rules and supernet rules for check_conflict below.
@@ -158,10 +162,14 @@ func collectConflict(rule *Rule, srcZones, dstZones []*Zone, src, dst []someObj,
 		for _, zone := range zones {
 			var mark int
 			if isPrimary {
-				if !zone.hasNonPrimary { continue }
+				if !zone.hasNonPrimary {
+					continue
+				}
 				mark = zone.primaryMark
 			} else {
-				if !zone.hasSecondary { continue }
+				if !zone.hasSecondary {
+					continue
+				}
 				mark = zone.secondaryMark
 			}
 			pushed := false
@@ -177,7 +185,7 @@ func collectConflict(rule *Rule, srcZones, dstZones []*Zone, src, dst []someObj,
 					case *Network:
 						if x.hasOtherSubnet {
 							if !allEstablished {
-								info.supernets[x] =  true
+								info.supernets[x] = true
 							}
 							continue
 						}
@@ -233,15 +241,19 @@ func collectConflict(rule *Rule, srcZones, dstZones []*Zone, src, dst []someObj,
 func checkConflict(conflict map[conflictKey]*conflictInfo) {
 	type pair struct {
 		super *Network
-		net *Network
+		net   *Network
 	}
 	cache := make(map[pair]bool)
 	for key, val := range conflict {
 		isSrc, isPrimary := key.isSrc, key.isPrimary
 		supernetMap := val.supernets
-		if supernetMap == nil { continue }
+		if supernetMap == nil {
+			continue
+		}
 		rules := val.rules
-		if rules == nil { continue }
+		if rules == nil {
+			continue
+		}
 	RULE:
 		for _, rule1 := range rules {
 			var zone1 pathStore
@@ -271,7 +283,9 @@ func checkConflict(conflict map[conflictKey]*conflictInfo) {
 			}
 			for supernet, _ := range supernetMap {
 				var zone2 pathStore = supernet.zone
-				if zone1 == zone2 { continue }
+				if zone1 == zone2 {
+					continue
+				}
 				for _, network := range list1 {
 					isSubnet, found := cache[pair{supernet, network}]
 					if !found {
@@ -284,20 +298,22 @@ func checkConflict(conflict map[conflictKey]*conflictInfo) {
 						isSubnet = p < prefix && matchIp(ip, i, m)
 						cache[pair{supernet, network}] = isSubnet
 					}
-					if !isSubnet { continue }
+					if !isSubnet {
+						continue
+					}
 					if isPrimary {
 						rule1.somePrimary = false
 					} else {
 						rule1.someNonSecondary = false
 					}
-/*					name1 := ""
-					if s := rule1.rule.service; s != nil {
-						name1 = s.name
-					}
-					debug("%s isSrc:%v", name1, isSrc)
-					debug(rule1.print())
-					debug("%s < %s", network.name, supernet.name)
-*/
+					/*					name1 := ""
+										if s := rule1.rule.service; s != nil {
+											name1 = s.name
+										}
+										debug("%s isSrc:%v", name1, isSrc)
+										debug(rule1.print())
+										debug("%s < %s", network.name, supernet.name)
+					*/
 					continue RULE
 				}
 			}

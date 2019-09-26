@@ -1,9 +1,12 @@
-package pass1;
+package pass1
 
 import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/hknutzen/go-Netspoc/pkg/abort"
+	"github.com/hknutzen/go-Netspoc/pkg/fileop"
+	"github.com/hknutzen/go-Netspoc/pkg/jcode"
 	"net"
 	"os"
 	"os/exec"
@@ -11,24 +14,21 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
-	"github.com/hknutzen/go-Netspoc/pkg/abort"
-	"github.com/hknutzen/go-Netspoc/pkg/fileop"
-	"github.com/hknutzen/go-Netspoc/pkg/jcode"
 )
 
 var program string
 
 func getIntf(router *Router) []*Interface {
-    if origRouter := router.origRouter; origRouter != nil {
-        return origRouter.origInterfaces
-    } else if origInterfaces := router.origInterfaces; origInterfaces != nil {
-		 return origInterfaces
-    } else {
-        return router.interfaces
-    }
+	if origRouter := router.origRouter; origRouter != nil {
+		return origRouter.origInterfaces
+	} else if origInterfaces := router.origInterfaces; origInterfaces != nil {
+		return origInterfaces
+	} else {
+		return router.interfaces
+	}
 }
 
-func (z *Zone)nonSecondaryInterfaces() []*Interface {
+func (z *Zone) nonSecondaryInterfaces() []*Interface {
 	var result []*Interface
 	for _, intf := range z.interfaces {
 		if intf.mainInterface == nil {
@@ -44,33 +44,33 @@ const (
 	groupPolicy
 	tgGeneral
 )
+
 var asaVpnAttributes = map[string]int{
 
-    // Our own attributes
-    "check-subject-name":         ownAttr,
-    "check-extended-key-usage":   ownAttr,
-    "trust-point":                ownAttr,
+	// Our own attributes
+	"check-subject-name":       ownAttr,
+	"check-extended-key-usage": ownAttr,
+	"trust-point":              ownAttr,
 
-    // group-policy attributes
-    "anyconnect-custom_perapp"    : groupPolicy,
-    "banner"                      : groupPolicy,
-    "dns-server"                  : groupPolicy,
-    "default-domain"              : groupPolicy,
-    "split-dns"                   : groupPolicy,
-    "wins-server"                 : groupPolicy,
-    "vpn-access-hours"            : groupPolicy,
-    "vpn-idle-timeout"            : groupPolicy,
-    "vpn-session-timeout"         : groupPolicy,
-    "vpn-simultaneous-logins"     : groupPolicy,
-    "vlan"                        : groupPolicy,
-    "split-tunnel-policy"         : groupPolicy,
+	// group-policy attributes
+	"anyconnect-custom_perapp": groupPolicy,
+	"banner":                   groupPolicy,
+	"dns-server":               groupPolicy,
+	"default-domain":           groupPolicy,
+	"split-dns":                groupPolicy,
+	"wins-server":              groupPolicy,
+	"vpn-access-hours":         groupPolicy,
+	"vpn-idle-timeout":         groupPolicy,
+	"vpn-session-timeout":      groupPolicy,
+	"vpn-simultaneous-logins":  groupPolicy,
+	"vlan":                     groupPolicy,
+	"split-tunnel-policy":      groupPolicy,
 
-    // tunnel-group general-attributes
-    "authentication-server-group" : tgGeneral,
-    "authorization-server-group"  : tgGeneral,
-    "authorization-required"      : tgGeneral,
-    "username-from-certificate"   : tgGeneral,
-
+	// tunnel-group general-attributes
+	"authentication-server-group": tgGeneral,
+	"authorization-server-group":  tgGeneral,
+	"authorization-required":      tgGeneral,
+	"username-from-certificate":   tgGeneral,
 }
 
 var network00, network00v6 *Network
@@ -106,7 +106,7 @@ func getDenyAnyRule(ipv6 bool) *Rule {
 func printHeader(fh *os.File, router *Router, what string) {
 	commentChar := router.model.CommentChar
 	if router.vrfMembers != nil {
-		what += " for " + router.name;
+		what += " for " + router.name
 	}
 	fmt.Fprintln(fh, commentChar, "[", what, "]")
 }
@@ -184,12 +184,12 @@ func printRoutes(fh *os.File, router *Router) {
 	// if combined network doesn't already exist.
 	// Prepare invPrefixAref.
 	var bitstrLen int
-	if ipv6  {
+	if ipv6 {
 		bitstrLen = 128
 	} else {
 		bitstrLen = 32
 	}
-	invPrefixAref := make([]map[string]*Network, bitstrLen + 1)
+	invPrefixAref := make([]map[string]*Network, bitstrLen+1)
 	keys := make([]int, 0, len(prefix2ip2net))
 	for k, _ := range prefix2ip2net {
 		keys = append(keys, k)
@@ -213,8 +213,8 @@ func printRoutes(fh *os.File, router *Router) {
 			}
 			m := invPrefixAref[invPrefix]
 			if m == nil {
-					m = make(map[string]*Network)
-					invPrefixAref[invPrefix] = m
+				m = make(map[string]*Network)
+				invPrefixAref[invPrefix] = m
 			}
 			m[string(ip)] = network
 		}
@@ -284,7 +284,7 @@ func printRoutes(fh *os.File, router *Router) {
 			}
 
 			// Add combined route.
-			combined := &Network{ ipObj: ipObj{ip: ip}, mask: combinedMask }
+			combined := &Network{ipObj: ipObj{ip: ip}, mask: combinedMask}
 			ip2net[string(ip)] = combined
 
 			ip2net = prefix2ip2net[combinedPrefix]
@@ -345,7 +345,7 @@ func printRoutes(fh *os.File, router *Router) {
 					// If both use the same hop, then small is redundant.
 					if net2hopInfo[big] == hopInfo {
 
-//                debug "Removed: small.name -> hop.name"
+						//                debug "Removed: small.name -> hop.name"
 						continue NETWORK
 					}
 
@@ -354,7 +354,7 @@ func printRoutes(fh *os.File, router *Router) {
 					// It must not be removed by default route later.
 					noOpt = true
 
-//             debug "No opt: small.name -> hop.name"
+					//             debug "No opt: small.name -> hop.name"
 					break
 				}
 			}
@@ -388,8 +388,8 @@ func printRoutes(fh *os.File, router *Router) {
 				}
 				if count > max {
 					maxIntf = intf
-					maxHop  = hop
-					max     = count
+					maxHop = hop
+					max = count
 				}
 			}
 		}
@@ -447,7 +447,7 @@ func printRoutes(fh *os.File, router *Router) {
 					} else {
 						adr = iosRouteCode(netinfo.IPNet)
 					}
-					fmt.Fprintln(fh, ip, "route", iosVrf + adr, hopAddr)
+					fmt.Fprintln(fh, ip, "route", iosVrf+adr, hopAddr)
 				case "NX-OS":
 					if vrf != "" && nxosPrefix == "" {
 
@@ -461,7 +461,7 @@ func printRoutes(fh *os.File, router *Router) {
 					if ipv6 {
 						ip += "v6"
 					}
-					fmt.Fprintln(fh, nxosPrefix + ip, "route", adr, hopAddr)
+					fmt.Fprintln(fh, nxosPrefix+ip, "route", adr, hopAddr)
 				case "ASA":
 					var adr string
 					ip := ""
@@ -471,7 +471,7 @@ func printRoutes(fh *os.File, router *Router) {
 					} else {
 						adr = iosRouteCode(netinfo.IPNet)
 					}
-					fmt.Fprintln(fh, ip + "route", intf.hardware.name, adr, hopAddr)
+					fmt.Fprintln(fh, ip+"route", intf.hardware.name, adr, hopAddr)
 				case "iproute":
 					adr := prefixCode(netinfo.IPNet)
 					fmt.Fprintln(fh, "ip route add", adr, "via", hopAddr)
@@ -503,7 +503,7 @@ func printAclPlaceholder(fh *os.File, router *Router, aclName string) {
 func getSplitTunnelNets(intf *Interface) []*Network {
 	var result []*Network
 	seen := make(map[*Network]bool)
-	checkRules := func (rules []*Rule, takeDst bool) {
+	checkRules := func(rules []*Rule, takeDst bool) {
 		for _, rule := range rules {
 			if rule.deny {
 				continue
@@ -579,7 +579,7 @@ func printTunnelGroupRa(fh *os.File, id, idName string, attributes map[string]st
 	var tunnelGenAtt []string
 	authentication := "certificate"
 	if groupPolicyName != "" {
-        tunnelGenAtt = append(tunnelGenAtt, "default-group-policy " + groupPolicyName)
+		tunnelGenAtt = append(tunnelGenAtt, "default-group-policy "+groupPolicyName)
 	} else {
 		authentication = "aaa " + authentication
 	}
@@ -605,7 +605,7 @@ func printTunnelGroupRa(fh *os.File, id, idName string, attributes map[string]st
 	fmt.Fprintln(fh, "tunnel-group", tunnelGroupName, "general-attributes")
 
 	for _, line := range tunnelGenAtt {
-		fmt.Fprintln(fh, " " + line)
+		fmt.Fprintln(fh, " "+line)
 	}
 	fmt.Fprintln(fh, "tunnel-group", tunnelGroupName, "ipsec-attributes")
 	printAsaTrustpoint(fh, router, trustpoint2)
@@ -630,15 +630,15 @@ func combineAttr(list ...map[string]string) map[string]string {
 }
 
 var asaVpnAttrNeedValue = map[string]bool{
-	"anyconnect-custom_perapp": true,
-	"banner": true,
-	"dns-server": true,
-	"default-domain": true,
-	"split-dns": true,
-	"wins-server": true,
-	"address-pools": true,
+	"anyconnect-custom_perapp":  true,
+	"banner":                    true,
+	"dns-server":                true,
+	"default-domain":            true,
+	"split-dns":                 true,
+	"wins-server":               true,
+	"address-pools":             true,
 	"split-tunnel-network-list": true,
-	"vpn-filter": true,
+	"vpn-filter":                true,
 }
 
 func printAsavpn(fh *os.File, router *Router) {
@@ -695,7 +695,7 @@ func printAsavpn(fh *os.File, router *Router) {
 				}
 				out += " " + value
 			}
-			fmt.Fprintln(fh, " " + out)
+			fmt.Fprintln(fh, " "+out)
 		}
 	}
 
@@ -713,7 +713,8 @@ func printAsavpn(fh *os.File, router *Router) {
 					continue
 				}
 				switch c {
-					case '@', '.', '-', '_': continue
+				case '@', '.', '-', '_':
+					continue
 				}
 				goto BAD
 			}
@@ -727,7 +728,7 @@ func printAsavpn(fh *os.File, router *Router) {
 	singleCertMap := make(map[string]bool)
 	extendedKey := make(map[string]string)
 	type ldapEntry struct {
-		dn string
+		dn     string
 		gpName string
 	}
 	ldapMap := make(map[string][]ldapEntry)
@@ -860,7 +861,7 @@ func printAsavpn(fh *os.File, router *Router) {
 					if groupPolicyName != "" {
 						fmt.Fprintln(fh, " vpn-group-policy", groupPolicyName)
 					}
-					fmt.Fprintln(fh, )
+					fmt.Fprintln(fh)
 				} else {
 					name := "pool-" + idName
 					mask := net.IP(src.mask).String()
@@ -870,9 +871,9 @@ func printAsavpn(fh *os.File, router *Router) {
 						maxIP[i] = src.ip[i] | ^src.mask[i]
 					}
 					max := maxIP.String()
-					fmt.Fprintln(fh, "ip local pool", name, ip + "-" + max, "mask", mask)
+					fmt.Fprintln(fh, "ip local pool", name, ip+"-"+max, "mask", mask)
 					attributes["address-pools"] = name
-					attributes["vpn-filter"]    = filterName
+					attributes["vpn-filter"] = filterName
 					groupPolicyName := "VPN-group-" + idName
 					printGroupPolicy(groupPolicyName, attributes)
 
@@ -982,7 +983,7 @@ func printAsavpn(fh *os.File, router *Router) {
 			tunnelGroupMap := certGroupMap[mapName]
 			fmt.Fprintln(fh, " certificate-group-map", mapName, "10", tunnelGroupMap)
 		}
-		fmt.Fprintln(fh, )
+		fmt.Fprintln(fh)
 	}
 
 	// Generate ldap attribute-maps and aaa-server referencing each map.
@@ -1004,37 +1005,37 @@ func printAsavpn(fh *os.File, router *Router) {
 }
 
 // Pre-processing for all interfaces.
-func printAclPrefix (fh *os.File, router *Router) {
+func printAclPrefix(fh *os.File, router *Router) {
 	model := router.model
 	if model.filter != "iptables" {
 		return
 	}
 	commentChar := model.CommentChar
-    fmt.Fprintln(fh, commentChar, "[ PREFIX ]")
-    fmt.Fprintln(fh, "#!/sbin/iptables-restore <<EOF")
+	fmt.Fprintln(fh, commentChar, "[ PREFIX ]")
+	fmt.Fprintln(fh, "#!/sbin/iptables-restore <<EOF")
 
-    // Excempt loopback packets from connection tracking.
-    fmt.Fprintln(fh, "*raw")
-    fmt.Fprintln(fh, ":PREROUTING ACCEPT")
-    fmt.Fprintln(fh, ":OUTPUT ACCEPT")
-    fmt.Fprintln(fh, "-A PREROUTING -i lo -j NOTRACK")
-    fmt.Fprintln(fh, "-A OUTPUT -o lo -j NOTRACK")
-    fmt.Fprintln(fh, "COMMIT")
+	// Excempt loopback packets from connection tracking.
+	fmt.Fprintln(fh, "*raw")
+	fmt.Fprintln(fh, ":PREROUTING ACCEPT")
+	fmt.Fprintln(fh, ":OUTPUT ACCEPT")
+	fmt.Fprintln(fh, "-A PREROUTING -i lo -j NOTRACK")
+	fmt.Fprintln(fh, "-A OUTPUT -o lo -j NOTRACK")
+	fmt.Fprintln(fh, "COMMIT")
 
-    // Start filter table
-    fmt.Fprintln(fh, "*filter")
-    fmt.Fprintln(fh, ":INPUT DROP")
-    fmt.Fprintln(fh, ":FORWARD DROP")
-    fmt.Fprintln(fh, ":OUTPUT ACCEPT")
-    fmt.Fprintln(fh, "-A INPUT -j ACCEPT -m state --state ESTABLISHED,RELATED")
-    fmt.Fprintln(fh, "-A FORWARD -j ACCEPT -m state --state ESTABLISHED,RELATED")
-    fmt.Fprintln(fh, "-A INPUT -j ACCEPT -i lo")
+	// Start filter table
+	fmt.Fprintln(fh, "*filter")
+	fmt.Fprintln(fh, ":INPUT DROP")
+	fmt.Fprintln(fh, ":FORWARD DROP")
+	fmt.Fprintln(fh, ":OUTPUT ACCEPT")
+	fmt.Fprintln(fh, "-A INPUT -j ACCEPT -m state --state ESTABLISHED,RELATED")
+	fmt.Fprintln(fh, "-A FORWARD -j ACCEPT -m state --state ESTABLISHED,RELATED")
+	fmt.Fprintln(fh, "-A INPUT -j ACCEPT -i lo")
 
-    // Add user defined chain 'droplog'.
-    fmt.Fprintln(fh, ":droplog -")
-    fmt.Fprintln(fh, "-A droplog -j LOG --log-level debug")
-    fmt.Fprintln(fh, "-A droplog -j DROP")
-    fmt.Fprintln(fh, )
+	// Add user defined chain 'droplog'.
+	fmt.Fprintln(fh, ":droplog -")
+	fmt.Fprintln(fh, "-A droplog -j LOG --log-level debug")
+	fmt.Fprintln(fh, "-A droplog -j DROP")
+	fmt.Fprintln(fh)
 }
 
 func printAclSuffix(fh *os.File, router *Router) {
@@ -1099,8 +1100,8 @@ func printIptablesAcls(fh *os.File, router *Router) {
 		hardware.ioRules = nil
 
 		// Empty line after each chain.
-		fmt.Fprintln(fh, )
-    }
+		fmt.Fprintln(fh)
+	}
 }
 
 func printCiscoAcls(fh *os.File, router *Router) {
@@ -1143,9 +1144,9 @@ func printCiscoAcls(fh *os.File, router *Router) {
 				hardware.intfRules = nil
 
 				// Don't generate single 'permit ip any any'.
-				if (! model.needAcl &&
+				if !model.needAcl &&
 					len(rules) == 1 && rules[0] == permitAny &&
-               len(intfRules) == 1 && intfRules[0] == permitAny) {
+					len(intfRules) == 1 && intfRules[0] == permitAny {
 					continue
 				}
 				info.natSet = natSet
@@ -1218,8 +1219,8 @@ func printCiscoAcls(fh *os.File, router *Router) {
 							continue
 						}
 						tunnelInfo := &aclInfo{
-							natSet: tunnelIntf.natSet,
-							rules: tunnelIntf.rules,
+							natSet:    tunnelIntf.natSet,
+							rules:     tunnelIntf.rules,
 							intfRules: tunnelIntf.intfRules,
 						}
 						info.subAclList = append(info.subAclList, tunnelInfo)
@@ -1261,24 +1262,24 @@ func printCiscoAcls(fh *os.File, router *Router) {
 			}
 
 			// Empty line after each ACL.
-			fmt.Fprintln(fh, )
+			fmt.Fprintln(fh)
 		}
 	}
 }
 
 func generateAcls(fh *os.File, router *Router) {
-    model := router.model
-    filter := model.filter
-    printHeader(fh, router, "ACL")
+	model := router.model
+	filter := model.filter
+	printHeader(fh, router, "ACL")
 
-    if filter == "iptables" {
-        printIptablesAcls(fh, router)
-    } else {
-        printCiscoAcls(fh, router)
-    }
+	if filter == "iptables" {
+		printIptablesAcls(fh, router)
+	} else {
+		printCiscoAcls(fh, router)
+	}
 }
 
-func genCryptoRules (local, remote []*Network) []*Rule {
+func genCryptoRules(local, remote []*Network) []*Rule {
 	src := make([]someObj, len(local))
 	for i, n := range local {
 		src[i] = n
@@ -1287,7 +1288,7 @@ func genCryptoRules (local, remote []*Network) []*Rule {
 	for i, n := range remote {
 		dst[i] = n
 	}
-	return []*Rule {{
+	return []*Rule{{
 		src: src,
 		dst: dst,
 		prt: []*proto{prtIP},
@@ -1306,7 +1307,7 @@ func printEzvpn(fh *os.File, router *Router) {
 	wanIntf := tunnelIntf.realInterface
 	wanHw := wanIntf.hardware
 	wanNatSet := wanHw.natSet
-   var lanIntf []*Interface
+	var lanIntf []*Interface
 	for _, intf := range interfaces {
 		if intf != wanIntf && intf != tunnelIntf {
 			lanIntf = append(lanIntf, intf)
@@ -1343,19 +1344,19 @@ func printEzvpn(fh *os.File, router *Router) {
 		lanHw := lanIntf.hardware
 		lanHw.subcmd = append(
 			lanHw.subcmd,
-			"crypto ipsec client ezvpn " + ezvpnName + " inside")
+			"crypto ipsec client ezvpn "+ezvpnName+" inside")
 	}
 	wanHw.subcmd =
-		append(wanHw.subcmd, "crypto ipsec client ezvpn " + ezvpnName)
+		append(wanHw.subcmd, "crypto ipsec client ezvpn "+ezvpnName)
 
 	// Crypto ACL controls which traffic needs to be encrypted.
 	cryptoRules :=
-      genCryptoRules(tunnelIntf.peer.peerNetworks, []*Network{getNetwork00(router.ipV6)})
+		genCryptoRules(tunnelIntf.peer.peerNetworks, []*Network{getNetwork00(router.ipV6)})
 	acls := &aclInfo{
-        name: cryptoAclName,
-        rules: cryptoRules,
-        natSet: tunNatSet,
-        isCryptoACL: true,
+		name:        cryptoAclName,
+		rules:       cryptoRules,
+		natSet:      tunNatSet,
+		isCryptoACL: true,
 	}
 	router.aclList = append(router.aclList, acls)
 	printAclPlaceholder(fh, router, cryptoAclName)
@@ -1376,7 +1377,7 @@ func printEzvpn(fh *os.File, router *Router) {
 
 	// Bind crypto filter ACL to virtual template.
 	fmt.Fprintln(fh,
-		"interface Virtual-Template" + strconv.Itoa(virtualInterfaceNumber),
+		"interface Virtual-Template"+strconv.Itoa(virtualInterfaceNumber),
 		"type tunnel")
 	var prefix string
 	if router.ipV6 {
@@ -1416,11 +1417,10 @@ func printCryptoAcl(fh *os.File, intf *Interface, suffix string, crypto *Crypto)
 	}
 	cryptoRules := genCryptoRules(local, remote)
 	aclInfo := &aclInfo{
-        name:        cryptoAclName,
-        rules:       cryptoRules,
-        natSet:      intf.natSet,
-        isCryptoACL: true,
-
+		name:        cryptoAclName,
+		rules:       cryptoRules,
+		natSet:      intf.natSet,
+		isCryptoACL: true,
 	}
 	router.aclList = append(router.aclList, aclInfo)
 	printAclPlaceholder(fh, router, cryptoAclName)
@@ -1453,7 +1453,7 @@ func printCryptoFilterAcl(fh *os.File, intf *Interface, suffix string) string {
 }
 
 // Called for static and dynamic crypto maps.
-func printCryptoMapAttributes (fh *os.File, prefix, cryptoType, cryptoAclName, cryptoFilterName string, isakmp *Isakmp, ipsec *Ipsec, ipsec2transName map[*Ipsec]string) {
+func printCryptoMapAttributes(fh *os.File, prefix, cryptoType, cryptoAclName, cryptoFilterName string, isakmp *Isakmp, ipsec *Ipsec, ipsec2transName map[*Ipsec]string) {
 
 	// Bind crypto ACL to crypto map.
 	fmt.Fprintln(fh, prefix, "match address", cryptoAclName)
@@ -1475,7 +1475,7 @@ func printCryptoMapAttributes (fh *os.File, prefix, cryptoType, cryptoAclName, c
 	}
 
 	if pfsGroup := ipsec.pfsGroup; pfsGroup != "" {
-		fmt.Fprintln(fh, prefix, "set pfs group" + pfsGroup)
+		fmt.Fprintln(fh, prefix, "set pfs group"+pfsGroup)
 	}
 
 	if pair := ipsec.lifetime; pair != nil {
@@ -1498,7 +1498,7 @@ func printCryptoMapAttributes (fh *os.File, prefix, cryptoType, cryptoAclName, c
 	}
 }
 
-func printTunnelGroupL2l (fh *os.File, router *Router, name string, isakmp *Isakmp) {
+func printTunnelGroupL2l(fh *os.File, router *Router, name string, isakmp *Isakmp) {
 	authentication := isakmp.authentication
 	fmt.Fprintln(fh, "tunnel-group", name, "type ipsec-l2l")
 	fmt.Fprintln(fh, "tunnel-group", name, "ipsec-attributes")
@@ -1516,7 +1516,7 @@ func printTunnelGroupL2l (fh *os.File, router *Router, name string, isakmp *Isak
 	}
 }
 
-func printCaAndTunnelGroupMap (fh *os.File, id, tgName string) {
+func printCaAndTunnelGroupMap(fh *os.File, id, tgName string) {
 
 	// Activate tunnel-group with tunnel-group-map.
 	// Use id as ca-map name.
@@ -1525,7 +1525,7 @@ func printCaAndTunnelGroupMap (fh *os.File, id, tgName string) {
 	fmt.Fprintln(fh, "tunnel-group-map", id, "10", tgName)
 }
 
-func printStaticCryptoMap (fh *os.File, router *Router, hardware *Hardware, mapName string, interfaces []*Interface, ipsec2transName map[*Ipsec]string) {
+func printStaticCryptoMap(fh *os.File, router *Router, hardware *Hardware, mapName string, interfaces []*Interface, ipsec2transName map[*Ipsec]string) {
 	model := router.model
 	cryptoType := model.crypto
 
@@ -1537,7 +1537,7 @@ func printStaticCryptoMap (fh *os.File, router *Router, hardware *Hardware, mapN
 
 	// Sort crypto maps by peer IP to get deterministic output.
 	sorted := make([]*Interface, 0, len(interfaces))
-	sorted = append(sorted, interfaces ...)
+	sorted = append(sorted, interfaces...)
 	sort.Slice(sorted, func(i, j int) bool {
 		return bytes.Compare(sorted[i].peer.realInterface.ip, sorted[j].peer.realInterface.ip) == -1
 	})
@@ -1560,13 +1560,13 @@ func printStaticCryptoMap (fh *os.File, router *Router, hardware *Hardware, mapN
 		// Define crypto map.
 		var prefix = ""
 		if cryptoType == "IOS" {
-			fmt.Fprintln(fh, "crypto map " + mapName + " " + seq + " ipsec-isakmp")
+			fmt.Fprintln(fh, "crypto map "+mapName+" "+seq+" ipsec-isakmp")
 		} else if cryptoType == "ASA" {
 			prefix = "crypto map " + mapName + " " + seq
 		}
 
 		// Set crypto peer.
-		fmt.Fprintln(fh, prefix, "set peer " + peerIp)
+		fmt.Fprintln(fh, prefix, "set peer "+peerIp)
 
 		printCryptoMapAttributes(fh, prefix, cryptoType,
 			cryptoAclName, cryptoFilterName, isakmp, ipsec,
@@ -1583,16 +1583,16 @@ func printStaticCryptoMap (fh *os.File, router *Router, hardware *Hardware, mapN
 	}
 }
 
-func printDynamicCryptoMap (fh *os.File, router *Router, mapName string, interfaces []*Interface, ipsec2transName map[*Ipsec]string) {
+func printDynamicCryptoMap(fh *os.File, router *Router, mapName string, interfaces []*Interface, ipsec2transName map[*Ipsec]string) {
 	model := router.model
 	cryptoType := model.crypto
 
 	// Sequence number for parts of crypto map with different certificates.
 	seqNum := 65536
 
-    // Sort crypto maps by certificate to get deterministic output.
+	// Sort crypto maps by certificate to get deterministic output.
 	sorted := make([]*Interface, 0, len(interfaces))
-	sorted = append(sorted, interfaces ...)
+	sorted = append(sorted, interfaces...)
 	sort.Slice(sorted, func(i, j int) bool {
 		return sorted[i].peer.id < sorted[j].peer.id
 	})
@@ -1621,7 +1621,7 @@ func printDynamicCryptoMap (fh *os.File, router *Router, mapName string, interfa
 
 		// Bind dynamic crypto map to crypto map.
 		prefix = "crypto map " + mapName + " " + seq
-		fmt.Fprintln(fh, prefix + " ipsec-isakmp dynamic " + id)
+		fmt.Fprintln(fh, prefix+" ipsec-isakmp dynamic "+id)
 
 		// Use id as tunnel-group name
 		printTunnelGroupL2l(fh, router, id, isakmp)
@@ -1641,7 +1641,7 @@ func ciscoCryptoWithDash(s, prefix string) string {
 	return prefix + "-" + tail
 }
 
-func printCrypto (fh *os.File, router *Router) {
+func printCrypto(fh *os.File, router *Router) {
 	model := router.model
 	cryptoType := model.crypto
 
@@ -1716,7 +1716,7 @@ func printCrypto (fh *os.File, router *Router) {
 			continue
 		}
 		isakmpCount++
-		fmt.Fprintln(fh, "crypto isakmp policy " + strconv.Itoa(isakmpCount))
+		fmt.Fprintln(fh, "crypto isakmp policy "+strconv.Itoa(isakmpCount))
 
 		// Don't print default value 'rsa-sig'.
 		if isakmp.authentication == "preshare" {
@@ -1728,15 +1728,15 @@ func printCrypto (fh *os.File, router *Router) {
 		if len(rest) != len(encryption) && len(rest) > 0 {
 			encryption = "aes " + rest
 		}
-		fmt.Fprintln(fh, " encryption " + encryption)
-		fmt.Fprintln(fh, " hash " + isakmp.hash)
-		fmt.Fprintln(fh, " group " + isakmp.group)
+		fmt.Fprintln(fh, " encryption "+encryption)
+		fmt.Fprintln(fh, " hash "+isakmp.hash)
+		fmt.Fprintln(fh, " group "+isakmp.group)
 
 		lifetime := isakmp.lifetime
 
 		// Don't print default value for backend IOS.
 		if lifetime != 86400 {
-			fmt.Fprintln(fh, " lifetime " + strconv.Itoa(lifetime))
+			fmt.Fprintln(fh, " lifetime "+strconv.Itoa(lifetime))
 		}
 	}
 
@@ -1753,7 +1753,7 @@ func printCrypto (fh *os.File, router *Router) {
 		if cryptoType == "ASA" && isakmp.ikeVersion == 2 {
 			fmt.Fprintln(fh, "crypto ipsec ikev2 ipsec-proposal", transformName)
 			if ah := ipsec.ah; ah != "" {
-				fmt.Fprintln(fh, " protocol ah",  ah)
+				fmt.Fprintln(fh, " protocol ah", ah)
 			}
 			var espEncr string
 			if esp := ipsec.espEncryption; esp == "" {
@@ -1765,14 +1765,14 @@ func printCrypto (fh *os.File, router *Router) {
 			} else {
 				espEncr = esp
 			}
-			fmt.Fprintln(fh, " protocol esp encryption " + espEncr)
+			fmt.Fprintln(fh, " protocol esp encryption "+espEncr)
 			if espAh := ipsec.espAuthentication; espAh != "" {
 				if espAh == "sha" {
 					espAh = "sha-1"
 				} else {
 					espAh = ciscoCryptoWithDash(espAh, "sha")
 				}
-				fmt.Fprintln(fh, " protocol esp integrity " + espAh)
+				fmt.Fprintln(fh, " protocol esp integrity "+espAh)
 			}
 		} else {
 			// IKEv1 syntax of ASA is identical to IOS.
@@ -1780,7 +1780,7 @@ func printCrypto (fh *os.File, router *Router) {
 			if ah := ipsec.ah; ah != "" {
 				transform += "ah-" + ah + "-hmac "
 			}
-			transform += "esp-";
+			transform += "esp-"
 			if esp := ipsec.espEncryption; esp == "" {
 				transform += "null"
 			} else {
@@ -1815,7 +1815,7 @@ func printCrypto (fh *os.File, router *Router) {
 			if real.negotiated || real.short || real.unnumbered {
 				dynamic = append(dynamic, intf)
 			} else {
-            static = append(static, intf)
+				static = append(static, intf)
 			}
 			haveCryptoMap = true
 		}
@@ -1839,14 +1839,14 @@ func printCrypto (fh *os.File, router *Router) {
 			continue
 		}
 		if cryptoType == "IOS" {
-			hardware.subcmd = append(hardware.subcmd, "crypto map " + mapName)
+			hardware.subcmd = append(hardware.subcmd, "crypto map "+mapName)
 		} else if cryptoType == "ASA" {
 			fmt.Fprintln(fh, "crypto map", mapName, "interface", hwName)
 		}
 	}
 }
 
-func printInterface (fh *os.File, router *Router) {
+func printInterface(fh *os.File, router *Router) {
 	model := router.model
 	if !model.printInterface {
 		return
@@ -1889,7 +1889,7 @@ func printInterface (fh *os.File, router *Router) {
 				addrCmd = "ip address " + addr + " " + mask
 				if secondary {
 					addrCmd += " secondary"
-            }
+				}
 			}
 			subcmd = append(subcmd, addrCmd)
 			if !ipv6 {
@@ -1898,9 +1898,9 @@ func printInterface (fh *os.File, router *Router) {
 		}
 		if vrf := router.vrf; vrf != "" {
 			if class == "NX-OS" {
-				subcmd = append(subcmd, "vrf member " + vrf)
+				subcmd = append(subcmd, "vrf member "+vrf)
 			} else {
-				subcmd = append(subcmd, "ip vrf forwarding " + vrf)
+				subcmd = append(subcmd, "ip vrf forwarding "+vrf)
 			}
 		}
 
@@ -1913,9 +1913,9 @@ func printInterface (fh *os.File, router *Router) {
 
 		subcmd = append(subcmd, hardware.subcmd...)
 
-		fmt.Fprintln(fh, "interface " + name)
+		fmt.Fprintln(fh, "interface "+name)
 		for _, cmd := range subcmd {
-			fmt.Fprintln(fh, " " + cmd)
+			fmt.Fprintln(fh, " "+cmd)
 		}
 	}
 	fmt.Fprintln(fh)
@@ -1955,7 +1955,7 @@ func isHostMask(m net.IPMask) bool {
 	return prefix == size
 }
 
-func prefixCode (n net.IPNet) string {
+func prefixCode(n net.IPNet) string {
 	prefix, size := n.Mask.Size()
 	if prefix == size {
 		return n.IP.String()
@@ -1964,7 +1964,7 @@ func prefixCode (n net.IPNet) string {
 
 }
 
-func fullPrefixCode (n net.IPNet) string {
+func fullPrefixCode(n net.IPNet) string {
 	prefix, _ := n.Mask.Size()
 	return n.IP.String() + "/" + strconv.Itoa(prefix)
 }
@@ -1994,9 +1994,10 @@ func getNeedProtect(r *Router) []*Interface {
 }
 
 type natCache struct {
-	nat natSet
+	nat   natSet
 	cache map[someObj]string
 }
+
 var nat2Cache = make(map[natSet]*natCache)
 
 func getAddrCache(n natSet) *natCache {
@@ -2004,7 +2005,7 @@ func getAddrCache(n natSet) *natCache {
 		return nc
 	}
 	nc := natCache{
-		nat: n,
+		nat:   n,
 		cache: make(map[someObj]string),
 	}
 	nat2Cache[n] = &nc
@@ -2022,22 +2023,22 @@ func getCachedAddr(o someObj, nc *natCache) string {
 
 func getCachedAddrList(l []someObj, nc *natCache) []string {
 	result := make([]string, len(l))
-	for i,o := range l {
+	for i, o := range l {
 		result[i] = getCachedAddr(o, nc)
 	}
 	return result
 }
 
-func printAcls (fh *os.File, vrfMembers []*Router) {
+func printAcls(fh *os.File, vrfMembers []*Router) {
 	var aclList []*jcode.ACLInfo
 	for _, router := range vrfMembers {
-		managed         := router.managed
+		managed := router.managed
 		secondaryFilter := strings.HasSuffix(managed, "secondary")
-		standardFilter  := managed == "standard"
-		model           := router.model
-		doAuth          := model.DoAuth
-		activeLog       := router.log
-		needProtect     := getNeedProtect(router)
+		standardFilter := managed == "standard"
+		model := router.model
+		doAuth := model.DoAuth
+		activeLog := router.log
+		needProtect := getNeedProtect(router)
 
 		process := func(acl *aclInfo) *jcode.ACLInfo {
 			jACL := new(jcode.ACLInfo)
@@ -2273,8 +2274,8 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 	}
 
 	router := vrfMembers[0]
-	model  := router.model
-	result := &jcode.RouterData{ Model: model.Class, ACLs: aclList }
+	model := router.model
+	result := &jcode.RouterData{Model: model.Class, ACLs: aclList}
 
 	if filterOnly := router.filterOnly; filterOnly != nil {
 		list := make([]string, len(filterOnly))
@@ -2291,7 +2292,7 @@ func printAcls (fh *os.File, vrfMembers []*Router) {
 	}
 
 	enc := json.NewEncoder(fh)
-//	enc.SetIndent("", " ")
+	//	enc.SetIndent("", " ")
 	err := enc.Encode(result)
 	if err != nil {
 		panic(err)
@@ -2339,7 +2340,7 @@ func checkOutputDir(dir string) {
 }
 
 // Print generated code for each managed router.
-func printCode (dir string) {
+func printCode(dir string) {
 	progress("Printing intermediate code")
 
 	var toPass2 *os.File
@@ -2356,7 +2357,7 @@ func printCode (dir string) {
 
 	checkedV6Dir := false
 	seen := make(map[*Router]bool)
-	printRouter := func (routers []*Router) {
+	printRouter := func(routers []*Router) {
 		for _, router := range routers {
 			if seen[router] {
 				continue
@@ -2393,7 +2394,7 @@ func printCode (dir string) {
 			// Restore interfaces of split router.
 			if orig := router.origInterfaces; orig != nil {
 				router.interfaces = orig
-				router.hardware   = router.origHardware
+				router.hardware = router.origHardware
 			}
 
 			// Collect VRF members.
@@ -2403,7 +2404,7 @@ func printCode (dir string) {
 			}
 
 			// Print version header.
-			fmt.Fprintln(fd, commentChar, "Generated by", program + ", version", version)
+			fmt.Fprintln(fd, commentChar, "Generated by", program+", version", version)
 			fmt.Fprintln(fd)
 
 			header := func(key, val string) {
@@ -2461,7 +2462,7 @@ func printCode (dir string) {
 	printRouter(routingOnlyRouters)
 }
 
-func PrintCode () {
+func PrintCode() {
 	checkOutputDir(outDir)
-	printCode(outDir);
+	printCode(outDir)
 }

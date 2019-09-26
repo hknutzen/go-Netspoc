@@ -27,6 +27,11 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"github.com/hknutzen/go-Netspoc/pkg/abort"
+	"github.com/hknutzen/go-Netspoc/pkg/conf"
+	"github.com/hknutzen/go-Netspoc/pkg/diag"
+	"github.com/hknutzen/go-Netspoc/pkg/fileop"
+	"github.com/hknutzen/go-Netspoc/pkg/jcode"
 	"github.com/json-iterator/go"
 	"io/ioutil"
 	"net"
@@ -35,11 +40,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"github.com/hknutzen/go-Netspoc/pkg/abort"
-	"github.com/hknutzen/go-Netspoc/pkg/conf"
-	"github.com/hknutzen/go-Netspoc/pkg/diag"
-	"github.com/hknutzen/go-Netspoc/pkg/fileop"
-	"github.com/hknutzen/go-Netspoc/pkg/jcode"
 )
 
 type ipNet struct {
