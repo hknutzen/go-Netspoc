@@ -17,7 +17,7 @@ type Config struct {
 
 type someObj interface {
 	getName() string
-	getNetwork() *Network
+	getNetwork() *network
 	getUp() someObj
 	address(nn natSet) net.IPNet
 	getAttr(attr string) string
@@ -38,18 +38,18 @@ type ipObj struct {
 func (x *ipObj) getName() string { return x.name }
 func (x *ipObj) getUp() someObj  { return x.up }
 
-type natMap map[string]*Network
+type natMap map[string]*network
 
-type Network struct {
+type network struct {
 	ipObj
 	attr             map[string]string
 	mask             net.IPMask
-	subnets          []*Subnet
-	interfaces       []*Interface
-	zone             *Zone
+	subnets          []*subnet
+	interfaces       []*routerIntf
+	zone             *zone
 	hasOtherSubnet   bool
-	maxSecondaryNet  *Network
-	nat              map[string]*Network
+	maxSecondaryNet  *network
+	nat              map[string]*network
 	dynamic          bool
 	hidden           bool
 	ipV6             bool
@@ -60,16 +60,16 @@ type Network struct {
 	radiusAttributes map[string]string
 }
 
-func (x *Network) getNetwork() *Network { return x }
+func (x *network) getNetwork() *network { return x }
 
 type netObj struct {
 	ipObj
-	network *Network
+	network *network
 }
 
-func (x *netObj) getNetwork() *Network { return x.network }
+func (x *netObj) getNetwork() *network { return x.network }
 
-type Subnet struct {
+type subnet struct {
 	netObj
 	mask             net.IPMask
 	nat              map[string]net.IP
@@ -78,7 +78,7 @@ type Subnet struct {
 	radiusAttributes map[string]string
 }
 
-type Model struct {
+type model struct {
 	CommentChar     string
 	Class           string
 	crypto          string
@@ -90,7 +90,7 @@ type Model struct {
 	needAcl         bool
 	hasIoAcl        bool
 	noCryptoFilter  bool
-	printInterface  bool
+	printRouterIntf bool
 	routing         string
 	stateless       bool
 	statelessSelf   bool
@@ -106,8 +106,8 @@ type aclInfo struct {
 	name         string
 	natSet       natSet
 	dstNatSet    natSet
-	rules        RuleList
-	intfRules    RuleList
+	rules        ruleList
+	intfRules    ruleList
 	protectSelf  bool
 	addPermit    bool
 	addDeny      bool
@@ -118,97 +118,97 @@ type aclInfo struct {
 	subAclList   []*aclInfo
 }
 
-type Router struct {
+type router struct {
 	pathStoreData
 	pathObjData
-	name                string
-	deviceName          string
-	managed             string
-	semiManaged         bool
-	adminIP             []string
-	model               *Model
-	log                 map[string]string
-	logDeny             bool
-	localMark           int
-	origInterfaces      []*Interface
-	crosslinkInterfaces []*Interface
-	filterOnly          []net.IPNet
-	generalPermit       []*proto
-	needProtect         bool
-	noGroupCode         bool
-	noSecondaryOpt      map[*Network]bool
-	hardware            []*Hardware
-	origHardware        []*Hardware
-	origRouter          *Router
-	primaryMark         int
-	radiusAttributes    map[string]string
-	routingOnly         bool
-	secondaryMark       int
-	trustPoint          string
-	vrfMembers          []*Router
-	ipV6                bool
-	aclList             []*aclInfo
-	vrf                 string
+	name             string
+	deviceName       string
+	managed          string
+	semiManaged      bool
+	adminIP          []string
+	model            *model
+	log              map[string]string
+	logDeny          bool
+	localMark        int
+	origIntfs        []*routerIntf
+	crosslinkIntfs   []*routerIntf
+	filterOnly       []net.IPNet
+	generalPermit    []*proto
+	needProtect      bool
+	noGroupCode      bool
+	noSecondaryOpt   map[*network]bool
+	hardware         []*hardware
+	origHardware     []*hardware
+	origRouter       *router
+	primaryMark      int
+	radiusAttributes map[string]string
+	routingOnly      bool
+	secondaryMark    int
+	trustPoint       string
+	vrfMembers       []*router
+	ipV6             bool
+	aclList          []*aclInfo
+	vrf              string
 }
 
-func (x *Router) getName() string { return x.name }
+func (x *router) getName() string { return x.name }
 
-type Interface struct {
+type routerIntf struct {
 	netObj
 	pathStoreData
-	router         *Router
-	crypto         *Crypto
+	router         *router
+	crypto         *crypto
 	dhcpClient     bool
 	dhcpServer     bool
-	hub            []*Crypto
-	spoke          *Crypto
+	hub            []*crypto
+	spoke          *crypto
 	id             string
 	isHub          bool
-	hardware       *Hardware
+	hardware       *hardware
 	loop           *loop
 	loopback       bool
 	loopEntryZone  map[pathStore]pathStore
 	loopZoneBorder bool
-	mainInterface  *Interface
+	mainIntf       *routerIntf
 	nat            map[string]net.IP
 	natSet         natSet
-	origMain       *Interface
+	origMain       *routerIntf
 	pathRestrict   []*pathRestriction
 	//	reachableAt   map[pathObj][]int
-	peer                 *Interface
-	peerNetworks         []*Network
-	realInterface        *Interface
-	redundancyInterfaces []*Interface
-	redundancyType       string
-	redundant            bool
-	reroutePermit        []someObj
-	routes               map[*Interface]map[*Network]bool
-	routing              *Routing
-	rules                RuleList
-	intfRules            RuleList
-	outRules             RuleList
-	idRules              map[string]*idInterface
-	toZone1              pathObj
-	zone                 *Zone
+	peer            *routerIntf
+	peerNetworks    []*network
+	realIntf        *routerIntf
+	redundancyIntfs []*routerIntf
+	redundancyType  string
+	redundant       bool
+	reroutePermit   []someObj
+	routes          map[*routerIntf]map[*network]bool
+	routing         *routing
+	rules           ruleList
+	intfRules       ruleList
+	outRules        ruleList
+	idRules         map[string]*idIntf
+	toZone1         pathObj
+	zone            *zone
 }
-type idInterface struct {
-	*Interface
-	src *Subnet
+type idIntf struct {
+	*routerIntf
+	src *subnet
 }
 
-type Routing struct {
+type routing struct {
 	name  string
 	prt   *proto
 	mcast mcastInfo
 }
 
-type Xxrp struct {
+type xxrp struct {
 	prt   *proto
 	mcast mcastInfo
 }
 
-type Hardware struct {
-	interfaces []*Interface
+type hardware struct {
+	interfaces []*routerIntf
 	crosslink  bool
 	loopback   bool
 	name       string
@@ -216,10 +216,10 @@ type Hardware struct {
 	dstNatSet  natSet
 	needOutAcl bool
 	noInAcl    bool
-	rules      RuleList
-	intfRules  RuleList
-	outRules   RuleList
-	ioRules    map[string]RuleList
+	rules      ruleList
+	intfRules  ruleList
+	outRules   ruleList
+	ioRules    map[string]ruleList
 	subcmd     []string
 }
 
@@ -227,20 +227,20 @@ type pathRestriction struct {
 	activePath bool
 }
 
-type Crypto struct {
-	ipsec             *Ipsec
+type crypto struct {
+	ipsec             *ipsec
 	detailedCryptoAcl bool
 }
-type Ipsec struct {
+type ipsec struct {
 	name              string
-	isakmp            *Isakmp
+	isakmp            *isakmp
 	lifetime          *[2]int
 	ah                string
 	espAuthentication string
 	espEncryption     string
 	pfsGroup          string
 }
-type Isakmp struct {
+type isakmp struct {
 	name           string
 	authentication string
 	encryption     string
@@ -251,31 +251,31 @@ type Isakmp struct {
 	lifetime       int
 }
 
-type Zone struct {
+type zone struct {
 	pathStoreData
 	pathObjData
 	name          string
-	networks      []*Network
+	networks      []*network
 	attr          map[string]string
 	hasSecondary  bool
 	hasNonPrimary bool
-	inArea        *Area
-	natDomain     *NATDomain
+	inArea        *area
+	natDomain     *natDomain
 	partition     string
 	primaryMark   int
 	secondaryMark int
-	zoneCluster   []*Zone
+	zoneCluster   []*zone
 }
 
-func (x *Zone) getName() string { return x.name }
+func (x *zone) getName() string { return x.name }
 
-type Area struct {
+type area struct {
 	name   string
 	attr   map[string]string
-	inArea *Area
+	inArea *area
 }
 
-type NATDomain struct {
+type natDomain struct {
 	natSet natSet
 }
 
@@ -307,31 +307,31 @@ type proto struct {
 	printed     string
 }
 
-type Service struct {
+type service struct {
 	name               string
 	disabled           bool
 	ruleCount          int
 	duplicateCount     int
 	redundantCount     int
-	hasSameDupl        map[*Service]bool
-	overlaps           []*Service
-	overlapsUsed       map[*Service]bool
+	hasSameDupl        map[*service]bool
+	overlaps           []*service
+	overlapsUsed       map[*service]bool
 	overlapsRestricted bool
 }
 
-type UnexpRule struct {
+type unexpRule struct {
 	prt     []protoOrName
-	service *Service
+	service *service
 }
 
-type Rule struct {
+type groupedRule struct {
 	deny             bool
 	src              []someObj
 	dst              []someObj
-	prt              ProtoList
+	prt              protoList
 	srcRange         *proto
 	log              string
-	rule             *UnexpRule
+	rule             *unexpRule
 	srcPath          pathStore
 	dstPath          pathStore
 	stateless        bool
@@ -340,19 +340,19 @@ type Rule struct {
 	someNonSecondary bool
 	somePrimary      bool
 }
-type RuleList []*Rule
+type ruleList []*groupedRule
 
-type PathRules struct {
-	permit RuleList
-	deny   RuleList
+type pathRules struct {
+	permit ruleList
+	deny   ruleList
 }
 
 type protoOrName interface{}
-type ProtoList []*proto
+type protoList []*proto
 
-type ProtoGroup struct {
+type protoGroup struct {
 	pairs     []protoOrName
-	elements  ProtoList
+	elements  protoList
 	recursive bool
 	isUsed    bool
 }

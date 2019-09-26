@@ -14,17 +14,17 @@ var ErrorCounter int
 var prtIP *proto
 var prtBootps *proto
 var prtBootpc *proto
-var xxrpInfo map[string]*Xxrp
+var xxrpInfo map[string]*xxrp
 
 var protocols map[string]*proto
-var protocolgroups map[string]*ProtoGroup
+var protocolgroups map[string]*protoGroup
 
-var services map[string]*Service
+var services map[string]*service
 
-var pathRules *PathRules
+var pRules *pathRules
 
-var managedRouters []*Router
-var routingOnlyRouters []*Router
-var zones []*Zone
+var managedRouters []*router
+var routingOnlyRouters []*router
+var zones []*zone
 
 var outDir string

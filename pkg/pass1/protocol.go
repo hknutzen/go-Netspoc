@@ -1,11 +1,11 @@
 package pass1
 
-func (l *ProtoList) push(p *proto) {
+func (l *protoList) push(p *proto) {
 	*l = append(*l, p)
 }
 
 func expandProtocols(list []protoOrName, context string) []*proto {
-	result := make(ProtoList, 0)
+	result := make(protoList, 0)
 	for _, pair := range list {
 		switch p := pair.(type) {
 
