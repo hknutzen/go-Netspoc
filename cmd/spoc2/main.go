@@ -518,7 +518,7 @@ func optimizeRules(rules ciscoRules, aclInfo *aclInfo) ciscoRules {
 
 		// Change protocol to IP.
 		rule.prt = prtIP
-		rule.srcRange = prtIP
+		rule.srcRange = nil
 
 		addRule(secondaryTree, rule)
 	}
